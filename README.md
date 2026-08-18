@@ -1,8 +1,9 @@
 # holberton-hackathonagentic
 
-Agent RH avec effets de bord réels (calendrier, mail, base employés), plan
-d'actions soumis à validation humaine avant toute exécution. Voir
-[SPEC.md](SPEC.md) pour le problème et les user stories.
+Agent RH à effets de bord — écriture réelle en base employés, calendrier et
+mail mockés localement (assumé et documenté) — avec un plan d'actions soumis
+à validation humaine avant toute exécution. Voir [SPEC.md](DOCS/SPEC.md)
+pour le problème et les user stories.
 
 ## Choix techniques
 
