@@ -6,7 +6,9 @@ Dans une entreprise, chaque arrivée, réunion ou événement interne déclenche
 des tâches manuelles répétitives : trouver un créneau, poser la réunion,
 prévenir les bonnes personnes par mail. Le RH perd du temps sur ces tâches
 à faible valeur, et les oublis (une annonce non envoyée, une réunion non
-posée) sont fréquents. Un agent qui prend en charge cette planification,
+posée) sont fréquents. Ces oublis pèsent d'abord sur l'expérience du
+nouvel arrivant, dès son premier jour. Un agent qui prend en charge cette
+planification,
 sous supervision humaine, doit libérer ce temps tout en gardant le contrôle
 sur ce qui est réellement exécuté.
 
