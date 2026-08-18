@@ -67,6 +67,12 @@ flowchart TB
     classDef backStyle fill:#fff7ed,stroke:#fb923c,stroke-width:1px
     classDef toolsStyle fill:#fdf4ff,stroke:#e879f9,stroke-width:1px
     classDef storageStyle fill:#f0fdf4,stroke:#4ade80,stroke-width:1px
+    style FRONT fill:transparent
+    style AGENT fill:transparent
+    style BACK fill:transparent
+    style TOOLS fill:transparent
+    style STORAGE fill:transparent
+    linkStyle 12 stroke:#000000,fill:none
 ```
 
 ## Les 5 couches
