@@ -19,7 +19,8 @@
         body: JSON.stringify({ message }),
       });
       const data = await res.json();
-      document.getElementById("output").textContent = data.response;
+      document.getElementById("output").textContent =
+        data.message + "\n\n" + JSON.stringify(data.plan, null, 2);
     }
   </script>
 </body>
