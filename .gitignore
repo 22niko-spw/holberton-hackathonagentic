@@ -1,0 +1,13 @@
+.env
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+*.db
+*.sqlite3
+outbox/
+*.ics
+
+.DS_Store
