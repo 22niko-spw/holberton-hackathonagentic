@@ -2,26 +2,24 @@
 
 ## Problème
 
-Dans une entreprise, chaque événement (arrivée d'un nouveau stagiaire/employé,
-réunion, afterwork) déclenche une série d'actions manuelles et répétitives :
-trouver un créneau commun, poser la réunion, prévenir les bonnes personnes par
-mail. L'agent reçoit une intention en langage naturel, construit un plan
-d'actions concrètes (vérifier les disponibilités, proposer un créneau,
-rédiger et envoyer les mails), l'affiche pour validation humaine action par
-action, puis exécute uniquement ce qui est approuvé. Chaque action est
-journalisée et annulable.
+Dans une entreprise, chaque arrivée, réunion ou événement interne déclenche
+des tâches manuelles répétitives : trouver un créneau, poser la réunion,
+prévenir les bonnes personnes par mail. Le RH perd du temps sur ces tâches
+à faible valeur, et les oublis (une annonce non envoyée, une réunion non
+posée) sont fréquents. Un agent qui prend en charge cette planification,
+sous supervision humaine, doit libérer ce temps tout en gardant le contrôle
+sur ce qui est réellement exécuté.
 
 ## User stories
 
 1. En tant que RH, je veux décrire l'arrivée d'un nouveau stagiaire/employé
    afin que l'agent planifie automatiquement les actions associées (accès,
    annonce, réunion d'intégration).
-2. En tant qu'organisateur, je veux que l'agent trouve un créneau commun
-   entre plusieurs employés afin de poser une réunion sans allers-retours
-   manuels.
-3. En tant qu'équipe, je veux être notifiée par mail des événements internes
-   (arrivée, réunion, afterwork) afin de rester informée sans effort de
-   communication manuel.
+2. En tant que RH, je veux que l'agent trouve un créneau commun entre
+   plusieurs employés afin de poser une réunion sans allers-retours manuels.
+3. En tant que RH, je veux que l'équipe soit notifiée par mail des
+   événements internes (arrivée, réunion, afterwork) afin qu'elle reste
+   informée sans effort de communication manuel de ma part.
 
 ## Hors scope
 
