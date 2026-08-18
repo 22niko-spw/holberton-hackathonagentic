@@ -4,10 +4,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from backend.groq_client import ask_groq
+from backend.agent import run_planner
+from backend.db import init_db
 
 app = FastAPI()
 templates = Jinja2Templates(directory="backend/templates")
+init_db()
 
 
 class ChatRequest(BaseModel):
@@ -15,7 +17,8 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    response: str
+    message: str
+    plan: list[dict]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -25,4 +28,5 @@ def index(request: Request):
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest) -> ChatResponse:
-    return ChatResponse(response=ask_groq(body.message))
+    result = run_planner(body.message)
+    return ChatResponse(message=result["message"], plan=result["plan"])
