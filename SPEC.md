@@ -36,4 +36,3 @@ journalisée et annulable.
 5. Pas d'authentification/gestion de rôles utilisateurs (un seul utilisateur
    RH pour le hackathon).
 6. Pas de notification en temps réel (push, SMS) — mail (mocké) uniquement.
-
