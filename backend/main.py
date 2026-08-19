@@ -24,6 +24,8 @@ class ChatResponse(BaseModel):
     message: str
     plan: list[dict]
     trace: list[dict] = []
+    llm_calls: list[dict] = []
+    usage: dict = {}
 
 
 @app.get("/")
@@ -45,4 +47,10 @@ def chat(body: ChatRequest) -> ChatResponse:
             plan=[],
             trace=[],
         )
-    return ChatResponse(message=result["message"], plan=result["plan"], trace=result.get("trace", []))
+    return ChatResponse(
+        message=result["message"],
+        plan=result["plan"],
+        trace=result.get("trace", []),
+        llm_calls=result.get("llm_calls", []),
+        usage=result.get("usage", {}),
+    )

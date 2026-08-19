@@ -137,6 +137,20 @@ function renderTrace(trace) {
   return details;
 }
 
+function renderUsage(usage) {
+  if (!usage || !usage.total_tokens) return null;
+
+  const parts = [`${usage.total_tokens} tokens`, `${usage.total_duration_ms} ms`];
+  if (usage.total_cost_usd !== null && usage.total_cost_usd !== undefined) {
+    parts.push(`$${usage.total_cost_usd.toFixed(6)}`);
+  }
+
+  const p = document.createElement("p");
+  p.className = "usage";
+  p.textContent = parts.join(" · ");
+  return p;
+}
+
 async function sendMessage(message) {
   const turn = addUserBubble(message);
   const pending = addPendingBubble();
@@ -165,6 +179,9 @@ async function sendMessage(message) {
 
     const traceEl = renderTrace(data.trace);
     if (traceEl) turn.appendChild(traceEl);
+
+    const usageEl = renderUsage(data.usage);
+    if (usageEl) turn.appendChild(usageEl);
   } catch (err) {
     pending.className = "bubble bubble--error";
     pending.textContent = `Une erreur est survenue : ${err.message}`;

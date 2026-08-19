@@ -17,6 +17,12 @@ _model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_TURNS = 6
 MAX_ACTIONS_PER_PLAN = 8
 
+# Tarifs Groq, USD / 1M tokens (console.groq.com/docs/model, relevé le 2026-08-19).
+# Absent du dict => cout non calcule (affiche a None cote front) plutot que d'inventer un prix.
+PRICING_PER_MILLION_TOKENS = {
+    "openai/gpt-oss-120b": {"input": 0.15, "output": 0.60},
+}
+
 SYSTEM_PROMPT = (
     "Tu es l'agent RH de l'entreprise. Tu ne peux ni écrire d'événement, ni "
     "envoyer d'email, ni enregistrer d'employé toi-même : ces fonctions ne "
@@ -120,14 +126,17 @@ def run_planner(message: str) -> dict:
     ]
     proposed_ids: list[int] = []
     trace: list[dict] = []
+    llm_calls: list[dict] = []
 
     for _ in range(MAX_TURNS):
+        llm_started = time.perf_counter()
         response = _client.chat.completions.create(
             model=_model,
             messages=messages,
             tools=TOOLS,
             tool_choice="auto",
         )
+        llm_calls.append(_llm_call_stats(response, time.perf_counter() - llm_started))
         reply = response.choices[0].message
 
         if not reply.tool_calls:
@@ -136,6 +145,8 @@ def run_planner(message: str) -> dict:
                 "action_ids": proposed_ids,
                 "plan": _plan_details(proposed_ids),
                 "trace": trace,
+                "llm_calls": llm_calls,
+                "usage": _usage_summary(llm_calls),
             }
 
         messages.append(
@@ -196,6 +207,8 @@ def run_planner(message: str) -> dict:
                     "action_ids": proposed_ids,
                     "plan": _plan_details(proposed_ids),
                     "trace": trace,
+                    "llm_calls": llm_calls,
+                    "usage": _usage_summary(llm_calls),
                 }
 
     return {
@@ -203,6 +216,41 @@ def run_planner(message: str) -> dict:
         "action_ids": proposed_ids,
         "plan": _plan_details(proposed_ids),
         "trace": trace,
+        "llm_calls": llm_calls,
+        "usage": _usage_summary(llm_calls),
+    }
+
+
+def _llm_call_stats(response, elapsed_seconds: float) -> dict:
+    usage = response.usage
+    prompt_tokens = usage.prompt_tokens if usage else None
+    completion_tokens = usage.completion_tokens if usage else None
+    total_tokens = usage.total_tokens if usage else None
+
+    cost_usd = None
+    price = PRICING_PER_MILLION_TOKENS.get(_model)
+    if price and usage:
+        cost_usd = round(
+            (prompt_tokens * price["input"] + completion_tokens * price["output"]) / 1_000_000,
+            6,
+        )
+
+    return {
+        "model": _model,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "duration_ms": round(elapsed_seconds * 1000, 1),
+        "cost_usd": cost_usd,
+    }
+
+
+def _usage_summary(llm_calls: list[dict]) -> dict:
+    costs = [c["cost_usd"] for c in llm_calls if c["cost_usd"] is not None]
+    return {
+        "total_tokens": sum(c["total_tokens"] or 0 for c in llm_calls),
+        "total_duration_ms": round(sum(c["duration_ms"] for c in llm_calls), 1),
+        "total_cost_usd": round(sum(costs), 6) if costs else None,
     }
 
 

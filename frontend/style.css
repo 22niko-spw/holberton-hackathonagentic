@@ -280,6 +280,15 @@ body {
   color: var(--status-refusee-text);
 }
 
+.usage {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .composer {
   display: flex;
   gap: 0.5rem;
