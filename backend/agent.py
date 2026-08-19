@@ -29,6 +29,8 @@ PRICING_PER_MILLION_TOKENS = {
     "openai/gpt-oss-120b": {"input": 0.15, "output": 0.60},
 }
 
+_WEEKDAYS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
 SYSTEM_PROMPT = (
     "Tu es l'agent RH de l'entreprise. Ton but est de faire gagner du temps "
     "au RH : agis de façon autonome et pose le MOINS de questions possible. "
@@ -69,6 +71,20 @@ SYSTEM_PROMPT = (
     "pas et n'invente jamais de résultat à sa place : explique au RH ce "
     "qui a échoué et pourquoi, en termes clairs."
 )
+
+
+def _system_prompt() -> str:
+    today = date.today()
+    date_context = (
+        f"Nous sommes le {today.isoformat()} ({_WEEKDAYS_FR[today.weekday()]}). "
+        "Si le RH donne une date sans préciser l'année (ex: '20 septembre', "
+        "'lundi prochain'), résous-la toi-même par rapport à aujourd'hui : "
+        "choisis la prochaine occurrence à venir — cette année si la date "
+        "n'est pas encore passée, sinon l'année suivante. Ne propose jamais "
+        "une date déjà passée.\n\n"
+    )
+    return date_context + SYSTEM_PROMPT
+
 
 TOOLS = [
     {
@@ -181,7 +197,7 @@ MAX_HISTORY_MESSAGES = 12  # ~6 tours user/assistant, pour borner le cout des to
 
 def run_planner(message: str, history: list[dict] | None = None) -> dict:
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": _system_prompt()},
         *(history or [])[-MAX_HISTORY_MESSAGES:],
         {"role": "user", "content": message},
     ]
