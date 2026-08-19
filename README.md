@@ -16,12 +16,33 @@ pour le problème et les user stories.
 
 ## Quickstart
 
-TODO — une fois le projet lancé (palier 2).
+```
+git clone <repo>
+cd holberton-hackathonagentic
+python3 -m venv .venv
+source .venv/bin/activate   # Windows : .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env   # puis renseigner GROQ_API_KEY
+uvicorn backend.main:app --reload
+# ouvrir http://localhost:8000
+```
 
 ## Architecture
 
-TODO — schéma détaillé en annexe, résumé ici (palier 1).
+Le front (Jinja2) envoie le message du RH à `/chat`. FastAPI passe la main à
+la boucle planificateur (`backend/agent.py`), qui appelle Groq avec les 3
+outils de lecture/proposition (voir DOCS/AGENTS.md) jusqu'à ce que le plan
+soit complet. Chaque action à effet de bord proposée est écrite dans SQLite
+à l'état `PROPOSEE`, jamais exécutée par le modèle lui-même. Schéma détaillé
+en annexe : [DOCS/architecture.md](DOCS/architecture.md).
 
 ## Limites connues
 
-TODO — au fil des paliers, voir aussi SPEC.md (hors scope).
+- Heures de travail codées en dur (9h-18h, jours ouvrés) dans
+  `get_employee_availability` — pas de mock ni d'API externe pour ça.
+- Pas encore d'écran d'approbation : le plan proposé s'affiche en JSON brut,
+  pas de validation ligne par ligne pour l'instant (prévu au palier 4).
+- Pas de fichier `.ics` généré pour les événements de calendrier (optionnel
+  dans AGENTS.md, non fait).
+- Calendrier et mail mockés localement, assumé et documenté (voir SPEC.md,
+  hors scope).
