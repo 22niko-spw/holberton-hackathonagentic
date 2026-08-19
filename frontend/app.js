@@ -80,6 +80,63 @@ function renderPlan(plan) {
   return container;
 }
 
+function renderTrace(trace) {
+  if (!trace || trace.length === 0) return null;
+
+  const details = document.createElement("details");
+  details.className = "trace";
+
+  const summary = document.createElement("summary");
+  const failures = trace.filter((call) => !call.ok).length;
+  summary.textContent = failures
+    ? `Trace d'exécution (${trace.length} appel${trace.length > 1 ? "s" : ""}, ${failures} en échec)`
+    : `Trace d'exécution (${trace.length} appel${trace.length > 1 ? "s" : ""})`;
+  details.appendChild(summary);
+
+  for (const call of trace) {
+    const row = document.createElement("div");
+    row.className = "trace__row";
+
+    const head = document.createElement("div");
+    head.className = "trace__head";
+
+    const tool = document.createElement("span");
+    tool.className = "trace__tool";
+    tool.textContent = call.tool;
+    head.appendChild(tool);
+
+    const status = document.createElement("span");
+    status.className = `trace__status ${call.ok ? "trace__status--ok" : "trace__status--error"}`;
+    status.textContent = call.ok ? "OK" : "Échec";
+    head.appendChild(status);
+
+    const duration = document.createElement("span");
+    duration.className = "trace__duration";
+    duration.textContent = `${call.duration_ms} ms`;
+    head.appendChild(duration);
+
+    row.appendChild(head);
+
+    if (call.args) {
+      const args = document.createElement("pre");
+      args.className = "trace__args";
+      args.textContent = JSON.stringify(call.args);
+      row.appendChild(args);
+    }
+
+    if (!call.ok && call.error) {
+      const error = document.createElement("p");
+      error.className = "trace__error";
+      error.textContent = call.error;
+      row.appendChild(error);
+    }
+
+    details.appendChild(row);
+  }
+
+  return details;
+}
+
 async function sendMessage(message) {
   const turn = addUserBubble(message);
   const pending = addPendingBubble();
@@ -105,6 +162,9 @@ async function sendMessage(message) {
 
     const planEl = renderPlan(data.plan);
     if (planEl) turn.appendChild(planEl);
+
+    const traceEl = renderTrace(data.trace);
+    if (traceEl) turn.appendChild(traceEl);
   } catch (err) {
     pending.className = "bubble bubble--error";
     pending.textContent = `Une erreur est survenue : ${err.message}`;

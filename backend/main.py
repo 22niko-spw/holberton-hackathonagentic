@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,6 +10,7 @@ from backend.agent import run_planner
 from backend.db import init_db
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+logger = logging.getLogger("le_bras")
 
 app = FastAPI()
 init_db()
@@ -21,6 +23,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     message: str
     plan: list[dict]
+    trace: list[dict] = []
 
 
 @app.get("/")
@@ -33,5 +36,13 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest) -> ChatResponse:
-    result = run_planner(body.message)
-    return ChatResponse(message=result["message"], plan=result["plan"])
+    try:
+        result = run_planner(body.message)
+    except Exception:
+        logger.exception("run_planner a échoué pour le message : %s", body.message)
+        return ChatResponse(
+            message="Une erreur inattendue m'a empêché de traiter cette demande. Réessaie, ou reformule.",
+            plan=[],
+            trace=[],
+        )
+    return ChatResponse(message=result["message"], plan=result["plan"], trace=result.get("trace", []))

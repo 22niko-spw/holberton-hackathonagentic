@@ -8,6 +8,8 @@ from backend.db import WORK_END_HOUR, WORK_START_HOUR, get_connection
 
 OUTBOX_DIR = Path(__file__).parent.parent / "outbox"
 
+MAX_RANGE_DAYS = 31  # garde-fou anti-JSON-géant : voir _check_range
+
 
 # ---------------------------------------------------------------------------
 # Outils exposés au modèle (lecture + propose_action) — voir DOCS/AGENTS.md
@@ -18,10 +20,47 @@ def get_employee_availability(
     date_range: tuple[date, date],
     duration_minutes: int = 15,
 ) -> dict[str, list[tuple[datetime, datetime]]]:
+    _check_range(date_range)
+    return _availability(employee_ids, date_range, duration_minutes)
+
+
+def find_common_slot(
+    employee_ids: list[str],
+    date_range: tuple[date, date],
+    duration_minutes: int = 30,
+    max_candidates: int = 3,
+) -> list[tuple[datetime, datetime]] | None:
+    _check_range(date_range)
+    start_date, end_date = date_range
+
+    for widen_days in (0, 7, 14, 21):
+        current_range = (start_date, end_date + timedelta(days=widen_days))
+        availability = _availability(employee_ids, current_range, duration_minutes)
+
+        common = list(availability.values())[0]
+        for slots in list(availability.values())[1:]:
+            common = _intersect(common, slots)
+
+        common = [s for s in common if (s[1] - s[0]) >= timedelta(minutes=duration_minutes)]
+        if common:
+            return common[:max_candidates]
+
+    return None
+
+
+def _availability(
+    employee_ids: list[str],
+    date_range: tuple[date, date],
+    duration_minutes: int,
+) -> dict[str, list[tuple[datetime, datetime]]]:
     conn = get_connection()
     result: dict[str, list[tuple[datetime, datetime]]] = {}
 
     for employee_id in employee_ids:
+        if conn.execute("SELECT 1 FROM employees WHERE id = ?", (employee_id,)).fetchone() is None:
+            conn.close()
+            raise ValueError(f"employee_id inconnu : {employee_id}")
+
         rows = conn.execute(
             "SELECT start, end FROM calendar_events WHERE employee_id = ? ORDER BY start",
             (employee_id,),
@@ -33,27 +72,16 @@ def get_employee_availability(
     return result
 
 
-def find_common_slot(
-    employee_ids: list[str],
-    date_range: tuple[date, date],
-    duration_minutes: int = 30,
-    max_candidates: int = 3,
-) -> list[tuple[datetime, datetime]] | None:
+def _check_range(date_range: tuple[date, date]) -> None:
     start_date, end_date = date_range
-
-    for widen_days in (0, 7, 14, 21):
-        current_range = (start_date, end_date + timedelta(days=widen_days))
-        availability = get_employee_availability(employee_ids, current_range, duration_minutes)
-
-        common = list(availability.values())[0]
-        for slots in list(availability.values())[1:]:
-            common = _intersect(common, slots)
-
-        common = [s for s in common if (s[1] - s[0]) >= timedelta(minutes=duration_minutes)]
-        if common:
-            return common[:max_candidates]
-
-    return None
+    span = (end_date - start_date).days
+    if span < 0:
+        raise ValueError("date_range invalide : la date de fin précède la date de début.")
+    if span > MAX_RANGE_DAYS:
+        raise ValueError(
+            f"Plage de dates trop large ({span} jours) : {MAX_RANGE_DAYS} jours maximum, "
+            "pour éviter de renvoyer un pavé de créneaux illisible."
+        )
 
 
 def propose_action(

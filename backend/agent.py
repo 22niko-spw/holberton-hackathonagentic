@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import date
 
 from dotenv import load_dotenv
@@ -23,7 +24,10 @@ SYSTEM_PROMPT = (
     "appeler propose_action avec le nom de l'outil visé, ses arguments et "
     "la raison. Un humain valide ensuite chaque action avant exécution. "
     "Utilise get_employee_availability et find_common_slot pour vérifier "
-    "les disponibilités avant de proposer une réunion."
+    "les disponibilités avant de proposer une réunion. Si un outil renvoie "
+    "une erreur (champ 'error'), ne l'ignore pas et n'invente jamais de "
+    "résultat à sa place : explique au RH ce qui a échoué et pourquoi, en "
+    "des termes clairs."
 )
 
 TOOLS = [
@@ -31,7 +35,12 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_employee_availability",
-            "description": "Renvoie les créneaux libres d'une liste d'employés sur une plage de dates.",
+            "description": (
+                "Renvoie les créneaux libres d'une liste d'employés sur une plage de dates. "
+                "date_range ne peut pas dépasser 31 jours (l'outil renvoie une erreur sinon) : "
+                "pour une recherche plus large, préfère find_common_slot qui élargit lui-même "
+                "sa recherche par petites tranches."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -110,6 +119,7 @@ def run_planner(message: str) -> dict:
         {"role": "user", "content": message},
     ]
     proposed_ids: list[int] = []
+    trace: list[dict] = []
 
     for _ in range(MAX_TURNS):
         response = _client.chat.completions.create(
@@ -121,7 +131,12 @@ def run_planner(message: str) -> dict:
         reply = response.choices[0].message
 
         if not reply.tool_calls:
-            return {"message": reply.content, "action_ids": proposed_ids, "plan": _plan_details(proposed_ids)}
+            return {
+                "message": reply.content,
+                "action_ids": proposed_ids,
+                "plan": _plan_details(proposed_ids),
+                "trace": trace,
+            }
 
         messages.append(
             {
@@ -139,21 +154,56 @@ def run_planner(message: str) -> dict:
         )
 
         for tool_call in reply.tool_calls:
-            args = json.loads(tool_call.function.arguments)
-            result = _dispatch(tool_call.function.name, args)
-            if tool_call.function.name == "propose_action":
-                proposed_ids.append(result)
+            started = time.perf_counter()
+            args = None
+            try:
+                args = json.loads(tool_call.function.arguments)
+                result = _dispatch(tool_call.function.name, args)
+                tool_content = _serialize(result)
+                trace.append(
+                    {
+                        "tool": tool_call.function.name,
+                        "args": args,
+                        "ok": True,
+                        "error": None,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                    }
+                )
+                if tool_call.function.name == "propose_action":
+                    proposed_ids.append(result)
+            except Exception as exc:
+                tool_content = {"error": str(exc)}
+                trace.append(
+                    {
+                        "tool": tool_call.function.name,
+                        "args": args,
+                        "ok": False,
+                        "error": str(exc),
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                    }
+                )
+
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "content": json.dumps(_serialize(result)),
+                    "content": json.dumps(tool_content),
                 }
             )
             if len(proposed_ids) >= MAX_ACTIONS_PER_PLAN:
-                return {"message": "Nombre maximal d'actions atteint.", "action_ids": proposed_ids, "plan": _plan_details(proposed_ids)}
+                return {
+                    "message": "Nombre maximal d'actions atteint.",
+                    "action_ids": proposed_ids,
+                    "plan": _plan_details(proposed_ids),
+                    "trace": trace,
+                }
 
-    return {"message": "Nombre maximal de tours atteint.", "action_ids": proposed_ids, "plan": _plan_details(proposed_ids)}
+    return {
+        "message": "Nombre maximal de tours atteint.",
+        "action_ids": proposed_ids,
+        "plan": _plan_details(proposed_ids),
+        "trace": trace,
+    }
 
 
 def _dispatch(name: str, args: dict):
