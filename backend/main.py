@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.agent import run_planner
+from backend.agent import DISABLED_TOOLS, TOGGLEABLE_TOOLS, run_planner
 from backend.db import get_connection, init_db
 from backend.executor import approve_action, reject_action
 
@@ -67,6 +67,22 @@ def calendar() -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+@app.get("/tools")
+def tools() -> list[dict]:
+    return [{"name": name, "enabled": name not in DISABLED_TOOLS} for name in TOGGLEABLE_TOOLS]
+
+
+@app.post("/tools/{name}/toggle")
+def toggle_tool(name: str) -> dict:
+    if name not in TOGGLEABLE_TOOLS:
+        raise HTTPException(status_code=404, detail=f"outil inconnu : {name}")
+    if name in DISABLED_TOOLS:
+        DISABLED_TOOLS.discard(name)
+    else:
+        DISABLED_TOOLS.add(name)
+    return {"name": name, "enabled": name not in DISABLED_TOOLS}
 
 
 @app.get("/actions")

@@ -6,6 +6,8 @@ const teamEl = document.getElementById("team");
 const newChatBtn = document.getElementById("new-chat");
 const sidebarToggle = document.getElementById("sidebar-toggle");
 const showToolsInput = document.getElementById("show-tools");
+const toolsPanel = document.getElementById("tools-panel");
+const toolsSettingsToggle = document.getElementById("tools-settings-toggle");
 const tabChat = document.getElementById("tab-chat");
 const tabCalendar = document.getElementById("tab-calendar");
 const tabHistory = document.getElementById("tab-history");
@@ -611,6 +613,63 @@ function resetConversation() {
   input.focus();
 }
 
+// Débrancher un outil en direct (démo palier 3 : "je débranche un outil et
+// je relance la même requête") sans toucher au code ni redémarrer le
+// serveur — l'agent renvoie alors un message d'erreur clair au lieu de
+// planter ou d'inventer un résultat.
+async function loadTools() {
+  try {
+    const res = await fetch("/tools");
+    if (!res.ok) throw new Error(`Erreur ${res.status}`);
+    const items = await res.json();
+
+    toolsPanel.innerHTML = "";
+    for (const item of items) {
+      const label = document.createElement("label");
+      label.className = `toggle ${item.enabled ? "" : "toggle--off"}`;
+
+      const text = document.createElement("span");
+      text.className = "toggle__label";
+      text.innerHTML = `
+        ${item.name}
+        <span class="toggle__hint">${item.enabled ? "Disponible" : "Indisponible (désactivé)"}</span>
+      `;
+      label.appendChild(text);
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.className = "toggle__input";
+      input.checked = item.enabled;
+      label.appendChild(input);
+
+      const switchEl = document.createElement("span");
+      switchEl.className = "toggle__switch";
+      label.appendChild(switchEl);
+
+      input.addEventListener("change", async () => {
+        input.disabled = true;
+        try {
+          const toggleRes = await fetch(`/tools/${item.name}/toggle`, { method: "POST" });
+          if (!toggleRes.ok) throw new Error(`Erreur ${toggleRes.status}`);
+          const updated = await toggleRes.json();
+          label.classList.toggle("toggle--off", !updated.enabled);
+          text.querySelector(".toggle__hint").textContent = updated.enabled
+            ? "Disponible"
+            : "Indisponible (désactivé)";
+        } catch (err) {
+          input.checked = !input.checked;
+        } finally {
+          input.disabled = false;
+        }
+      });
+
+      toolsPanel.appendChild(label);
+    }
+  } catch (err) {
+    toolsPanel.innerHTML = `<p class="team__loading">Outils indisponibles.</p>`;
+  }
+}
+
 async function loadTeam() {
   try {
     const res = await fetch("/employees");
@@ -689,6 +748,12 @@ input.addEventListener("input", () => {
 
 newChatBtn.addEventListener("click", resetConversation);
 
+toolsSettingsToggle.addEventListener("click", () => {
+  const expanded = toolsSettingsToggle.getAttribute("aria-expanded") === "true";
+  toolsSettingsToggle.setAttribute("aria-expanded", String(!expanded));
+  toolsPanel.hidden = expanded;
+});
+
 showToolsInput.addEventListener("change", () => {
   showTools = showToolsInput.checked;
   localStorage.setItem(SHOW_TOOLS_KEY, showTools ? "1" : "0");
@@ -735,3 +800,4 @@ calendarDetailClose.addEventListener("click", closeDayDetail);
 renderEmptyState();
 loadTeam();
 loadCalendar();
+loadTools();

@@ -30,6 +30,17 @@
       </div>
 
       <div class="sidebar__section sidebar__section--pinned">
+        <button type="button" id="tools-settings-toggle" class="sidebar__settings-toggle" aria-expanded="false">
+          <svg viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1 4.7 4.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <span>Outils de l'agent</span>
+        </button>
+        <div id="tools-panel" class="tools-panel" hidden>
+          <p class="team__loading">Chargement…</p>
+        </div>
+
         <h2 class="sidebar__heading">Réglages</h2>
         <label class="toggle">
           <span class="toggle__label">

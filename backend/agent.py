@@ -17,6 +17,12 @@ _model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 MAX_TURNS = 6
 MAX_ACTIONS_PER_PLAN = 8
 
+# Outils qu'on peut "débrancher" en direct (démo / checkpoint palier 3),
+# sans toucher au code ni redémarrer le serveur. État en mémoire (process
+# unique) : suffisant pour une démo, pas conçu pour tenir plusieurs workers.
+TOGGLEABLE_TOOLS = ["list_employees", "get_employee_availability", "find_common_slot"]
+DISABLED_TOOLS: set[str] = set()
+
 # Tarifs Groq, USD / 1M tokens (console.groq.com/docs/model, relevé le 2026-08-19).
 # Absent du dict => cout non calcule (affiche a None cote front) plutot que d'inventer un prix.
 PRICING_PER_MILLION_TOKENS = {
@@ -310,6 +316,8 @@ def _usage_summary(llm_calls: list[dict]) -> dict:
 
 
 def _dispatch(name: str, args: dict):
+    if name in DISABLED_TOOLS:
+        raise RuntimeError(f"L'outil '{name}' n'est pas disponible actuellement (désactivé).")
     if name == "list_employees":
         return list_employees(args.get("name_contains"))
     if name == "get_employee_availability":
