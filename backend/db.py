@@ -61,17 +61,31 @@ def init_db() -> None:
 
 
 def _seed(conn: sqlite3.Connection) -> None:
-    conn.execute(
+    employees = [
+        ("adam", "Adam", "adam@example.com", "Manager Produit", "Produit", None, "2022-01-10"),
+        ("david", "David", "david@example.com", "Développeur Backend", "Produit", "adam", "2023-03-06"),
+        ("atomic-slf", "Atomic SLF", "atomic-slf@example.com", "Développeur Frontend", "Produit", "adam", "2023-09-18"),
+        ("yo", "¥o", "yo@example.com", "Chargé RH", "RH", None, "2021-11-02"),
+    ]
+    conn.executemany(
         "INSERT INTO employees (id, name, email, role, department, manager_id, start_date) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("fatou", "Fatou Diop", "fatou@example.com", "Manager Produit", "Produit", None, "2022-01-10"),
+        employees,
     )
-    conn.execute(
+
+    calendar_events = [
+        ("adam", "2026-08-24T09:00:00", "2026-08-24T11:00:00", "Point équipe"),
+        ("adam", "2026-08-24T14:00:00", "2026-08-24T17:00:00", "Comité produit"),
+        ("adam", "2026-08-25T09:00:00", "2026-08-25T10:00:00", "1:1 David"),
+        ("david", "2026-08-24T09:00:00", "2026-08-24T12:00:00", "Sprint planning"),
+        ("david", "2026-08-25T09:00:00", "2026-08-25T10:00:00", "1:1 Adam"),
+        ("david", "2026-08-26T15:00:00", "2026-08-26T17:00:00", "Revue de code"),
+        ("atomic-slf", "2026-08-24T10:00:00", "2026-08-24T12:00:00", "Sprint planning"),
+        ("atomic-slf", "2026-08-25T14:00:00", "2026-08-25T16:00:00", "Atelier design"),
+        ("yo", "2026-08-24T09:00:00", "2026-08-24T09:30:00", "Point RH quotidien"),
+    ]
+    conn.executemany(
         "INSERT INTO calendar_events (employee_id, start, end, title) VALUES (?, ?, ?, ?)",
-        ("fatou", "2026-08-24T09:00:00", "2026-08-24T11:00:00", "Point équipe"),
-    )
-    conn.execute(
-        "INSERT INTO calendar_events (employee_id, start, end, title) VALUES (?, ?, ?, ?)",
-        ("fatou", "2026-08-24T14:00:00", "2026-08-24T17:00:00", "Comité produit"),
+        calendar_events,
     )
     conn.commit()
