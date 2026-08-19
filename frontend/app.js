@@ -8,8 +8,12 @@ const sidebarToggle = document.getElementById("sidebar-toggle");
 const showToolsInput = document.getElementById("show-tools");
 const tabChat = document.getElementById("tab-chat");
 const tabCalendar = document.getElementById("tab-calendar");
+const tabHistory = document.getElementById("tab-history");
 const chatView = document.getElementById("chat-view");
 const calendarView = document.getElementById("calendar-view");
+const historyView = document.getElementById("history-view");
+const historyList = document.getElementById("history-list");
+const historyRefresh = document.getElementById("history-refresh");
 const calendarPrev = document.getElementById("calendar-prev");
 const calendarNext = document.getElementById("calendar-next");
 const calendarToday = document.getElementById("calendar-today");
@@ -59,12 +63,24 @@ const DAY_LABELS_LONG = [
   "Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi",
 ];
 
+const CALENDAR_MONTH_KEY = "le-bras:calendar-month";
+
 let calendarEvents = [];
 let employeeColors = new Map();
 let employeeNames = new Map();
 let calendarMonth = new Date();
 let hiddenEmployees = new Set();
 let selectedDayKey = null;
+
+// Date -> "AAAA-MM-JJ" en heure locale. Ne JAMAIS utiliser toISOString()
+// ici : ça convertit en UTC et décale la date d'un jour dans les fuseaux
+// derrière UTC (ex. minuit local le 1er devient 31 la veille en UTC).
+function toDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function colorForEmployee(employeeId) {
   if (!employeeColors.has(employeeId)) {
@@ -162,6 +178,7 @@ function renderCalendarGrid() {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
   calendarLabel.textContent = `${MONTH_LABELS[month]} ${year}`;
+  localStorage.setItem(CALENDAR_MONTH_KEY, `${year}-${String(month + 1).padStart(2, "0")}`);
 
   const firstOfMonth = new Date(year, month, 1);
   const startOffset = (firstOfMonth.getDay() + 6) % 7; // grille du lundi
@@ -169,8 +186,7 @@ function renderCalendarGrid() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
 
-  const today = new Date();
-  const todayKey = today.toISOString().slice(0, 10);
+  const todayKey = toDateKey(new Date());
 
   calendarGrid.innerHTML = "";
   for (const label of WEEKDAY_LABELS) {
@@ -182,7 +198,7 @@ function renderCalendarGrid() {
 
   for (let i = 0; i < totalCells; i++) {
     const date = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
-    const key = date.toISOString().slice(0, 10);
+    const key = toDateKey(date);
     const outside = date.getMonth() !== month;
     const weekend = date.getDay() === 0 || date.getDay() === 6;
 
@@ -228,7 +244,11 @@ async function loadCalendar() {
     if (!res.ok) throw new Error(`Erreur ${res.status}`);
     calendarEvents = await res.json();
 
-    if (calendarEvents.length > 0) {
+    const savedMonth = localStorage.getItem(CALENDAR_MONTH_KEY);
+    if (savedMonth) {
+      const [year, month] = savedMonth.split("-").map(Number);
+      calendarMonth = new Date(year, month - 1, 1);
+    } else if (calendarEvents.length > 0) {
       calendarMonth = new Date(calendarEvents[0].start.slice(0, 10));
     }
     renderCalendarGrid();
@@ -237,12 +257,81 @@ async function loadCalendar() {
   }
 }
 
+const HISTORY_STATUS_LABELS = {
+  PROPOSEE: "Proposée",
+  APPROUVEE: "Approuvée",
+  EXECUTEE: "Exécutée",
+  REFUSEE: "Refusée",
+  BLOQUEE: "Bloquée",
+};
+
+async function loadHistory() {
+  historyList.innerHTML = `<p class="calendar__empty">Chargement…</p>`;
+  try {
+    const res = await fetch("/actions");
+    if (!res.ok) throw new Error(`Erreur ${res.status}`);
+    const items = await res.json();
+
+    if (items.length === 0) {
+      historyList.innerHTML = `<p class="calendar__empty">Aucune action proposée pour l'instant.</p>`;
+      return;
+    }
+
+    historyList.innerHTML = "";
+    for (const item of items) {
+      const card = document.createElement("div");
+      card.className = "history__item";
+
+      const head = document.createElement("div");
+      head.className = "history__head";
+
+      const tool = document.createElement("span");
+      tool.className = "history__tool";
+      tool.textContent = `#${item.id} · ${item.tool}`;
+      head.appendChild(tool);
+
+      const status = document.createElement("span");
+      const statusKey = (item.status || "").toLowerCase();
+      status.className = `status status--${statusKey}`;
+      status.textContent = HISTORY_STATUS_LABELS[item.status] || item.status;
+      head.appendChild(status);
+
+      card.appendChild(head);
+
+      if (item.reason) {
+        const reason = document.createElement("p");
+        reason.className = "history__reason";
+        reason.textContent = item.reason;
+        card.appendChild(reason);
+      }
+
+      if (item.executed_at) {
+        const meta = document.createElement("p");
+        meta.className = "history__meta";
+        meta.textContent = `Exécutée le ${item.executed_at.replace("T", " à ")}`;
+        card.appendChild(meta);
+      }
+
+      const args = document.createElement("pre");
+      args.className = "history__args";
+      args.textContent = JSON.stringify(item.result ? { args: item.args, result: item.result } : item.args, null, 2);
+      card.appendChild(args);
+
+      historyList.appendChild(card);
+    }
+  } catch (err) {
+    historyList.innerHTML = `<p class="calendar__empty">Historique indisponible.</p>`;
+  }
+}
+
 function switchView(view) {
-  const showChat = view === "chat";
-  chatView.hidden = !showChat;
-  calendarView.hidden = showChat;
-  tabChat.setAttribute("aria-selected", String(showChat));
-  tabCalendar.setAttribute("aria-selected", String(!showChat));
+  chatView.hidden = view !== "chat";
+  calendarView.hidden = view !== "calendar";
+  historyView.hidden = view !== "history";
+  tabChat.setAttribute("aria-selected", String(view === "chat"));
+  tabCalendar.setAttribute("aria-selected", String(view === "calendar"));
+  tabHistory.setAttribute("aria-selected", String(view === "history"));
+  if (view === "history") loadHistory();
 }
 
 function renderEmptyState() {
@@ -284,6 +373,7 @@ function renderPlan(plan) {
   for (const action of plan) {
     const card = document.createElement("div");
     card.className = "action";
+    card.dataset.actionId = action.id;
 
     const head = document.createElement("div");
     head.className = "action__head";
@@ -313,10 +403,71 @@ function renderPlan(plan) {
     args.textContent = JSON.stringify(action.args, null, 2);
     card.appendChild(args);
 
+    if (action.status === "PROPOSEE") {
+      const controls = document.createElement("div");
+      controls.className = "action__controls";
+
+      const approveBtn = document.createElement("button");
+      approveBtn.type = "button";
+      approveBtn.className = "action__btn action__btn--approve";
+      approveBtn.textContent = "Approuver";
+      approveBtn.addEventListener("click", () => decideAction(action, "approve", card, status));
+
+      const rejectBtn = document.createElement("button");
+      rejectBtn.type = "button";
+      rejectBtn.className = "action__btn action__btn--reject";
+      rejectBtn.textContent = "Refuser";
+      rejectBtn.addEventListener("click", () => decideAction(action, "reject", card, status));
+
+      controls.appendChild(approveBtn);
+      controls.appendChild(rejectBtn);
+      card.appendChild(controls);
+    }
+
     container.appendChild(card);
   }
 
   return container;
+}
+
+// Approuver déclenche l'exécution réelle (idempotente) de l'action via
+// l'exécuteur ; refuser bloque en cascade tout ce qui en dépendait.
+async function decideAction(action, decision, card, statusEl) {
+  const controls = card.querySelector(".action__controls");
+  const buttons = controls ? controls.querySelectorAll("button") : [];
+  for (const btn of buttons) btn.disabled = true;
+
+  try {
+    const res = await fetch(`/actions/${action.id}/${decision}`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || `Erreur ${res.status}`);
+
+    statusEl.className = `status status--${data.status.toLowerCase()}`;
+    statusEl.textContent = STATUS_LABELS[data.status] || data.status;
+
+    const confirmation = document.createElement("p");
+    confirmation.className =
+      data.status === "REFUSEE" ? "action__confirmation action__confirmation--reject" : "action__confirmation";
+    confirmation.textContent = data.message;
+    card.appendChild(confirmation);
+
+    if (controls) controls.remove();
+
+    if (data.status === "EXECUTEE" && action.tool === "create_calendar_event") {
+      await loadCalendar();
+      if (action.args && action.args.start) {
+        calendarMonth = new Date(action.args.start.slice(0, 10));
+        closeDayDetail();
+        renderCalendarGrid();
+      }
+    }
+  } catch (err) {
+    const error = document.createElement("p");
+    error.className = "action__confirmation action__confirmation--reject";
+    error.textContent = `Erreur : ${err.message}`;
+    card.appendChild(error);
+    for (const btn of buttons) btn.disabled = false;
+  }
 }
 
 // La séquence d'outils appelés reste disponible pour l'oral ("montrez-moi la
@@ -558,6 +709,8 @@ document.addEventListener("click", (event) => {
 
 tabChat.addEventListener("click", () => switchView("chat"));
 tabCalendar.addEventListener("click", () => switchView("calendar"));
+tabHistory.addEventListener("click", () => switchView("history"));
+historyRefresh.addEventListener("click", loadHistory);
 
 calendarPrev.addEventListener("click", () => {
   calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
