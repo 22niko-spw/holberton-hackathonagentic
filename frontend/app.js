@@ -38,6 +38,7 @@ const turnTraces = new Map();
 const STATUS_LABELS = {
   PROPOSEE: "Proposée",
   APPROUVEE: "Approuvée",
+  EXECUTEE: "Exécutée",
   REFUSEE: "Refusée",
   BLOQUEE: "Bloquée",
 };
@@ -268,7 +269,11 @@ const HISTORY_STATUS_LABELS = {
 };
 
 async function loadHistory() {
-  historyList.innerHTML = `<p class="calendar__empty">Chargement…</p>`;
+  historyList.innerHTML = `
+    <div class="skeleton skeleton--card"></div>
+    <div class="skeleton skeleton--card"></div>
+    <div class="skeleton skeleton--card"></div>
+  `;
   try {
     const res = await fetch("/actions");
     if (!res.ok) throw new Error(`Erreur ${res.status}`);
@@ -281,8 +286,9 @@ async function loadHistory() {
 
     historyList.innerHTML = "";
     for (const item of items) {
+      const statusKey = (item.status || "").toLowerCase();
       const card = document.createElement("div");
-      card.className = "history__item";
+      card.className = `history__item history__item--${statusKey}`;
 
       const head = document.createElement("div");
       head.className = "history__head";
@@ -293,7 +299,6 @@ async function loadHistory() {
       head.appendChild(tool);
 
       const status = document.createElement("span");
-      const statusKey = (item.status || "").toLowerCase();
       status.className = `status status--${statusKey}`;
       status.textContent = HISTORY_STATUS_LABELS[item.status] || item.status;
       head.appendChild(status);
@@ -373,8 +378,9 @@ function renderPlan(plan) {
   container.className = "plan";
 
   for (const action of plan) {
+    const statusKey = (action.status || "").toLowerCase();
     const card = document.createElement("div");
-    card.className = "action";
+    card.className = `action action--${statusKey}`;
     card.dataset.actionId = action.id;
 
     const head = document.createElement("div");
@@ -386,7 +392,6 @@ function renderPlan(plan) {
     head.appendChild(tool);
 
     const status = document.createElement("span");
-    const statusKey = (action.status || "").toLowerCase();
     status.className = `status status--${statusKey}`;
     status.textContent = STATUS_LABELS[action.status] || action.status;
     head.appendChild(status);
@@ -444,8 +449,10 @@ async function decideAction(action, decision, card, statusEl) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `Erreur ${res.status}`);
 
-    statusEl.className = `status status--${data.status.toLowerCase()}`;
+    const newStatusKey = data.status.toLowerCase();
+    statusEl.className = `status status--${newStatusKey}`;
     statusEl.textContent = STATUS_LABELS[data.status] || data.status;
+    card.className = `action action--${newStatusKey}`;
 
     const confirmation = document.createElement("p");
     confirmation.className =
