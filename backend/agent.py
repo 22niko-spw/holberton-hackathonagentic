@@ -20,7 +20,7 @@ MAX_ACTIONS_PER_PLAN = 8
 # Outils qu'on peut "débrancher" en direct (démo / checkpoint palier 3),
 # sans toucher au code ni redémarrer le serveur. État en mémoire (process
 # unique) : suffisant pour une démo, pas conçu pour tenir plusieurs workers.
-TOGGLEABLE_TOOLS = ["list_employees", "get_employee_availability", "find_common_slot"]
+TOGGLEABLE_TOOLS = ["list_employees", "get_employee_availability", "find_common_slot", "send_email"]
 DISABLED_TOOLS: set[str] = set()
 
 # Tarifs Groq, USD / 1M tokens (console.groq.com/docs/model, relevé le 2026-08-19).

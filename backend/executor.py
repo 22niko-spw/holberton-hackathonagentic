@@ -2,6 +2,7 @@ import json
 import sqlite3
 from datetime import date, datetime
 
+from backend.agent import DISABLED_TOOLS
 from backend.db import get_connection
 from backend.tools import create_calendar_event, register_employee, send_email
 
@@ -76,6 +77,12 @@ def approve_action(action_id: int) -> dict:
                 raise ValueError(
                     f"l'action #{action['depends_on']} dont celle-ci dépend n'est pas encore exécutée"
                 )
+
+        if action["tool"] in DISABLED_TOOLS:
+            raise ValueError(
+                f"l'outil '{action['tool']}' est actuellement désactivé — réactive-le dans "
+                "« Outils de l'agent » avant d'approuver cette action."
+            )
 
         conn.execute("UPDATE actions SET status = 'APPROUVEE' WHERE id = ?", (action_id,))
         conn.commit()
