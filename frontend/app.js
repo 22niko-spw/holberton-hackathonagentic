@@ -654,17 +654,23 @@ async function loadTools() {
       label.appendChild(switchEl);
 
       input.addEventListener("change", async () => {
+        // On envoie l'état voulu explicitement (enable/disable), jamais un
+        // simple "toggle" : si le serveur a redémarré entre-temps, un
+        // toggle aveugle peut partir dans le mauvais sens par rapport à ce
+        // que le navigateur affiche encore.
+        const desired = input.checked;
         input.disabled = true;
         try {
-          const toggleRes = await fetch(`/tools/${item.name}/toggle`, { method: "POST" });
-          if (!toggleRes.ok) throw new Error(`Erreur ${toggleRes.status}`);
-          const updated = await toggleRes.json();
+          const res = await fetch(`/tools/${item.name}/${desired ? "enable" : "disable"}`, { method: "POST" });
+          if (!res.ok) throw new Error(`Erreur ${res.status}`);
+          const updated = await res.json();
+          input.checked = updated.enabled;
           label.classList.toggle("toggle--off", !updated.enabled);
           text.querySelector(".toggle__hint").textContent = updated.enabled
             ? "Disponible"
             : "Indisponible (désactivé)";
         } catch (err) {
-          input.checked = !input.checked;
+          input.checked = !desired;
         } finally {
           input.disabled = false;
         }
@@ -759,6 +765,7 @@ toolsSettingsToggle.addEventListener("click", () => {
   const expanded = toolsSettingsToggle.getAttribute("aria-expanded") === "true";
   toolsSettingsToggle.setAttribute("aria-expanded", String(!expanded));
   toolsPanel.hidden = expanded;
+  if (!expanded) loadTools(); // resynchronise avec le serveur à chaque ouverture
 });
 
 showToolsInput.addEventListener("change", () => {

@@ -74,15 +74,20 @@ def tools() -> list[dict]:
     return [{"name": name, "enabled": name not in DISABLED_TOOLS} for name in TOGGLEABLE_TOOLS]
 
 
-@app.post("/tools/{name}/toggle")
-def toggle_tool(name: str) -> dict:
+@app.post("/tools/{name}/enable")
+def enable_tool(name: str) -> dict:
     if name not in TOGGLEABLE_TOOLS:
         raise HTTPException(status_code=404, detail=f"outil inconnu : {name}")
-    if name in DISABLED_TOOLS:
-        DISABLED_TOOLS.discard(name)
-    else:
-        DISABLED_TOOLS.add(name)
-    return {"name": name, "enabled": name not in DISABLED_TOOLS}
+    DISABLED_TOOLS.discard(name)
+    return {"name": name, "enabled": True}
+
+
+@app.post("/tools/{name}/disable")
+def disable_tool(name: str) -> dict:
+    if name not in TOGGLEABLE_TOOLS:
+        raise HTTPException(status_code=404, detail=f"outil inconnu : {name}")
+    DISABLED_TOOLS.add(name)
+    return {"name": name, "enabled": False}
 
 
 @app.get("/actions")
