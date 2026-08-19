@@ -9,26 +9,93 @@
 </head>
 <body>
   <div class="app">
-    <header class="app__header">
-      <div class="app__brand">
-        <img src="/static/assets/logo.png" alt="Le Bras" class="app__logo" />
-        <h1>Le Bras</h1>
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <img src="/static/assets/logo.png" alt="Le Bras" class="sidebar__logo" />
+        <div>
+          <h1>Le Bras</h1>
+          <p class="sidebar__tagline">Agent RH à validation humaine</p>
+        </div>
       </div>
-      <p class="app__subtitle">Agent RH — chaque action à effet de bord attend ta validation.</p>
-    </header>
 
-    <main id="thread" class="thread" aria-live="polite"></main>
+      <button type="button" id="new-chat" class="sidebar__new-chat">
+        + Nouvelle conversation
+      </button>
 
-    <form id="composer" class="composer">
-      <textarea
-        id="message"
-        class="composer__input"
-        rows="1"
-        placeholder="Prépare l'arrivée de Panaki le 1er septembre…"
-        autofocus
-      ></textarea>
-      <button type="submit" class="composer__submit" id="submit">Envoyer</button>
-    </form>
+      <div class="sidebar__section">
+        <h2 class="sidebar__heading">Équipe</h2>
+        <div id="team" class="team">
+          <p class="team__loading">Chargement…</p>
+        </div>
+      </div>
+
+      <div class="sidebar__section sidebar__section--pinned">
+        <h2 class="sidebar__heading">Réglages</h2>
+        <label class="toggle">
+          <span class="toggle__label">
+            Afficher les outils utilisés
+            <span class="toggle__hint">Détail des appels, masqué par défaut</span>
+          </span>
+          <input type="checkbox" id="show-tools" class="toggle__input" />
+          <span class="toggle__switch"></span>
+        </label>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="main__header">
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Afficher l'équipe">
+          <span></span><span></span><span></span>
+        </button>
+
+        <nav class="view-switch" role="tablist">
+          <button type="button" id="tab-chat" class="view-switch__tab" role="tab" aria-selected="true">Chat</button>
+          <button type="button" id="tab-calendar" class="view-switch__tab" role="tab" aria-selected="false">Calendrier</button>
+        </nav>
+
+        <p class="main__subtitle">Chaque action à effet de bord attend ta validation avant exécution.</p>
+      </header>
+
+      <section id="chat-view" class="view">
+        <div id="thread" class="thread" aria-live="polite"></div>
+
+        <form id="composer" class="composer">
+          <textarea
+            id="message"
+            class="composer__input"
+            rows="1"
+            placeholder="Prépare l'arrivée de Panaki le 1er septembre…"
+            autofocus
+          ></textarea>
+          <button type="submit" class="composer__submit" id="submit" aria-label="Envoyer">
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true">
+              <path d="M17 3 3 9.5l6 2.5m8-9-3.5 14L9 12.5m8-9.5L9 12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </form>
+      </section>
+
+      <section id="calendar-view" class="view calendar" hidden>
+        <div class="calendar__toolbar">
+          <div class="calendar__nav">
+            <button type="button" id="calendar-prev" class="calendar__nav-btn" aria-label="Mois précédent">‹</button>
+            <h2 id="calendar-label" class="calendar__label"></h2>
+            <button type="button" id="calendar-next" class="calendar__nav-btn" aria-label="Mois suivant">›</button>
+          </div>
+          <button type="button" id="calendar-today" class="calendar__today">Aujourd'hui</button>
+        </div>
+        <div id="calendar-legend" class="calendar__legend"></div>
+        <div id="calendar-grid" class="calendar__grid"></div>
+
+        <div id="calendar-day-detail" class="calendar__detail" hidden>
+          <div class="calendar__detail-head">
+            <h3 id="calendar-detail-title"></h3>
+            <button type="button" id="calendar-detail-close" class="calendar__detail-close" aria-label="Fermer">×</button>
+          </div>
+          <div id="calendar-detail-list" class="calendar__detail-list"></div>
+        </div>
+      </section>
+    </main>
   </div>
 
   <script src="/static/app.js"></script>

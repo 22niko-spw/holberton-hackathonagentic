@@ -15,6 +15,25 @@ MAX_RANGE_DAYS = 31  # garde-fou anti-JSON-géant : voir _check_range
 # Outils exposés au modèle (lecture + propose_action) — voir DOCS/AGENTS.md
 # ---------------------------------------------------------------------------
 
+def list_employees(name_contains: str | None = None) -> list[dict]:
+    """Annuaire interne : permet au modèle de retrouver un employee_id à
+    partir d'un nom cité par l'utilisateur, ou de savoir que la personne
+    n'existe pas encore (=> nouvel arrivant, register_employee d'abord)."""
+    conn = get_connection()
+    if name_contains:
+        rows = conn.execute(
+            "SELECT id, name, role, department, manager_id FROM employees "
+            "WHERE name LIKE ? ORDER BY name",
+            (f"%{name_contains}%",),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, name, role, department, manager_id FROM employees ORDER BY name"
+        ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def get_employee_availability(
     employee_ids: list[str],
     date_range: tuple[date, date],

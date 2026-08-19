@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from groq import Groq
 
 from backend.db import get_connection
-from backend.tools import find_common_slot, get_employee_availability, propose_action
+from backend.tools import find_common_slot, get_employee_availability, list_employees, propose_action
 
 load_dotenv()
 
@@ -24,19 +24,70 @@ PRICING_PER_MILLION_TOKENS = {
 }
 
 SYSTEM_PROMPT = (
-    "Tu es l'agent RH de l'entreprise. Tu ne peux ni écrire d'événement, ni "
-    "envoyer d'email, ni enregistrer d'employé toi-même : ces fonctions ne "
-    "te sont pas données. Pour qu'une de ces actions ait lieu, tu dois "
-    "appeler propose_action avec le nom de l'outil visé, ses arguments et "
-    "la raison. Un humain valide ensuite chaque action avant exécution. "
-    "Utilise get_employee_availability et find_common_slot pour vérifier "
-    "les disponibilités avant de proposer une réunion. Si un outil renvoie "
-    "une erreur (champ 'error'), ne l'ignore pas et n'invente jamais de "
-    "résultat à sa place : explique au RH ce qui a échoué et pourquoi, en "
-    "des termes clairs."
+    "Tu es l'agent RH de l'entreprise. Ton but est de faire gagner du temps "
+    "au RH : agis de façon autonome et pose le MOINS de questions possible. "
+    "Ne redemande jamais une information que tu peux retrouver toi-même "
+    "avec tes outils.\n\n"
+    "RÉSOUDRE LES PERSONNES — n'utilise jamais un nom cité par l'utilisateur "
+    "sans le vérifier. Appelle d'abord list_employees(name_contains=...) : "
+    "- trouvé => utilise directement son employee_id, ne redemande jamais "
+    "son email ou un identifiant à l'utilisateur, tu l'as déjà.\n"
+    "- introuvable => c'est un nouvel arrivant, pas encore dans le système. "
+    "Commence par proposer register_employee (via propose_action). "
+    "N'invente jamais l'email, le rôle, le service ou le manager d'un "
+    "nouvel arrivant : si l'utilisateur ne les a pas donnés, demande "
+    "uniquement les champs manquants réellement nécessaires à "
+    "register_employee, en une seule question groupée — jamais une par "
+    "une, et jamais de concept qui n'existe pas dans le système (il n'y a "
+    "pas de 'calendrier de service', juste un agenda par employé).\n\n"
+    "PLANIFIER — une fois les identifiants résolus, utilise toi-même "
+    "get_employee_availability et find_common_slot pour trouver un "
+    "créneau. Ne demande jamais à l'utilisateur de choisir parmi des "
+    "contraintes abstraites : propose UN créneau concret et précis "
+    "('le 24/08 à 9h'), puis demande une confirmation simple avant "
+    "d'appeler propose_action.\n\n"
+    "EFFETS DE BORD — tu ne peux ni écrire d'événement, ni envoyer "
+    "d'email, ni enregistrer d'employé toi-même : ces fonctions ne te "
+    "sont pas données. Pour qu'une de ces actions ait lieu, appelle "
+    "propose_action avec le nom de l'outil visé, ses arguments et la "
+    "raison. Un humain valide ensuite chaque action avant exécution. Le "
+    "champ 'args' doit respecter EXACTEMENT ce schéma selon l'outil visé, "
+    "sans inventer d'autres noms de clés :\n"
+    "- create_calendar_event: {employee_ids: [id, ...], start: "
+    "'AAAA-MM-JJTHH:MM:SS', end: 'AAAA-MM-JJTHH:MM:SS', title, "
+    "description (optionnel)}\n"
+    "- send_email: {employee_ids: [id, ...], subject, body}\n"
+    "- register_employee: {name, email, role, department, manager_id "
+    "(ou null), start_date: 'AAAA-MM-JJ'}\n\n"
+    "ERREURS — si un outil renvoie une erreur (champ 'error'), ne l'ignore "
+    "pas et n'invente jamais de résultat à sa place : explique au RH ce "
+    "qui a échoué et pourquoi, en termes clairs."
 )
 
 TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "list_employees",
+            "description": (
+                "Annuaire interne de l'entreprise. À utiliser SYSTÉMATIQUEMENT avant "
+                "d'agir dès qu'un nom de personne est cité, pour retrouver son "
+                "employee_id sans avoir à le demander à l'utilisateur. Si name_contains "
+                "ne renvoie aucun résultat, la personne n'est pas encore dans le "
+                "système : c'est un nouvel arrivant (utiliser register_employee, pas "
+                "les outils de calendrier)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name_contains": {
+                        "type": "string",
+                        "description": "Filtre partiel sur le nom (insensible à la casse). Omettre pour lister tout le monde.",
+                    },
+                },
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -119,9 +170,13 @@ TOOLS = [
 ]
 
 
-def run_planner(message: str) -> dict:
+MAX_HISTORY_MESSAGES = 12  # ~6 tours user/assistant, pour borner le cout des tours suivants
+
+
+def run_planner(message: str, history: list[dict] | None = None) -> dict:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
+        *(history or [])[-MAX_HISTORY_MESSAGES:],
         {"role": "user", "content": message},
     ]
     proposed_ids: list[int] = []
@@ -255,6 +310,8 @@ def _usage_summary(llm_calls: list[dict]) -> dict:
 
 
 def _dispatch(name: str, args: dict):
+    if name == "list_employees":
+        return list_employees(args.get("name_contains"))
     if name == "get_employee_availability":
         start, end = args["date_range"]
         return get_employee_availability(

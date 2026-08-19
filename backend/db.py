@@ -1,7 +1,25 @@
+import random
 import sqlite3
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "agent.db"
+
+RANDOM_EVENTS_END = date(2026, 12, 31)
+RANDOM_EVENT_TITLES = [
+    "Point 1:1",
+    "Réunion d'équipe",
+    "Revue de code",
+    "Atelier design",
+    "Point client",
+    "Rétrospective sprint",
+    "Formation interne",
+    "Entretien annuel",
+    "Brainstorm produit",
+    "Démo sprint",
+    "Point budget",
+    "Café d'équipe",
+]
 
 WORK_START_HOUR = 9
 WORK_END_HOUR = 18
@@ -65,7 +83,9 @@ def _seed(conn: sqlite3.Connection) -> None:
         ("adam", "Adam", "adam@example.com", "Manager Produit", "Produit", None, "2022-01-10"),
         ("david", "David", "david@example.com", "Développeur Backend", "Produit", "adam", "2023-03-06"),
         ("atomic-slf", "Atomic SLF", "atomic-slf@example.com", "Développeur Frontend", "Produit", "adam", "2023-09-18"),
-        ("yo", "¥o", "yo@example.com", "Chargé RH", "RH", None, "2021-11-02"),
+        ("yo", "Yo", "yo@example.com", "Chargé RH", "RH", None, "2021-11-02"),
+        ("noham", "Noham", "noham@example.com", "Développeur Backend", "Produit", "adam", "2024-02-12"),
+        ("sagal", "Sagal", "sagal@example.com", "Développeuse Frontend", "Produit", "adam", "2024-05-20"),
     ]
     conn.executemany(
         "INSERT INTO employees (id, name, email, role, department, manager_id, start_date) "
@@ -83,9 +103,57 @@ def _seed(conn: sqlite3.Connection) -> None:
         ("atomic-slf", "2026-08-24T10:00:00", "2026-08-24T12:00:00", "Sprint planning"),
         ("atomic-slf", "2026-08-25T14:00:00", "2026-08-25T16:00:00", "Atelier design"),
         ("yo", "2026-08-24T09:00:00", "2026-08-24T09:30:00", "Point RH quotidien"),
+        ("noham", "2026-08-24T09:00:00", "2026-08-24T12:00:00", "Sprint planning"),
+        ("noham", "2026-08-25T15:00:00", "2026-08-25T16:00:00", "Revue de code"),
+        ("sagal", "2026-08-24T10:00:00", "2026-08-24T12:00:00", "Sprint planning"),
+        ("sagal", "2026-08-26T09:00:00", "2026-08-26T10:30:00", "Atelier design"),
     ]
     conn.executemany(
         "INSERT INTO calendar_events (employee_id, start, end, title) VALUES (?, ?, ?, ?)",
         calendar_events,
     )
+
+    employee_ids = [emp[0] for emp in employees]
+    scattered = _random_events(employee_ids, date(2026, 8, 27), RANDOM_EVENTS_END)
+    conn.executemany(
+        "INSERT INTO calendar_events (employee_id, start, end, title) VALUES (?, ?, ?, ?)",
+        scattered,
+    )
+
     conn.commit()
+
+
+def _random_events(
+    employee_ids: list[str],
+    start: date,
+    end: date,
+) -> list[tuple[str, str, str, str]]:
+    """Éparpille des événements fictifs sur chaque semaine ouvrée de la
+    période, pour que le calendrier ne soit pas vide au-delà de la semaine
+    de démo initiale. Seed fixe (42) : les données restent stables entre
+    deux reseed d'un environnement propre."""
+    rng = random.Random(42)
+    events: list[tuple[str, str, str, str]] = []
+
+    day = start
+    while day <= end:
+        if day.weekday() < 5:
+            for employee_id in employee_ids:
+                if rng.random() < 0.35:
+                    hour = rng.randint(WORK_START_HOUR, WORK_END_HOUR - 1)
+                    duration = rng.choice([30, 45, 60, 90])
+                    start_dt = datetime.combine(day, time(hour=hour))
+                    end_dt = start_dt + timedelta(minutes=duration)
+                    if end_dt.hour >= WORK_END_HOUR and end_dt.minute > 0:
+                        end_dt = datetime.combine(day, time(hour=WORK_END_HOUR))
+                    events.append(
+                        (
+                            employee_id,
+                            start_dt.isoformat(),
+                            end_dt.isoformat(),
+                            rng.choice(RANDOM_EVENT_TITLES),
+                        )
+                    )
+        day += timedelta(days=1)
+
+    return events
