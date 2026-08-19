@@ -1,0 +1,240 @@
+:root {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --border: #e7e5e4;
+  --text: #1c1917;
+  --text-muted: #78716c;
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  --radius: 12px;
+  --status-proposee-bg: #fef3c7;
+  --status-proposee-text: #92400e;
+  --status-approuvee-bg: #dcfce7;
+  --status-approuvee-text: #166534;
+  --status-refusee-bg: #fee2e2;
+  --status-refusee-text: #991b1b;
+  --status-bloquee-bg: #f1f5f9;
+  --status-bloquee-text: #475569;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0a09;
+    --surface: #1c1917;
+    --border: #292524;
+    --text: #fafaf9;
+    --text-muted: #a8a29e;
+    --accent: #60a5fa;
+    --accent-contrast: #0c0a09;
+    --status-proposee-bg: #422006;
+    --status-proposee-text: #fcd34d;
+    --status-approuvee-bg: #052e16;
+    --status-approuvee-text: #86efac;
+    --status-refusee-bg: #450a0a;
+    --status-refusee-text: #fca5a5;
+    --status-bloquee-bg: #1e293b;
+    --status-bloquee-text: #cbd5e1;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0 1.25rem;
+}
+
+.app__header {
+  padding: 2rem 0 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.app__header h1 {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.app__subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.thread {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem 0;
+}
+
+.thread__empty {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+  margin-top: 3rem;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bubble {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  max-width: 85%;
+  white-space: pre-wrap;
+}
+
+.bubble--user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.bubble--agent {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.bubble--pending {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.bubble--error {
+  background: var(--status-refusee-bg);
+  color: var(--status-refusee-text);
+  border: 1px solid var(--status-refusee-bg);
+}
+
+.plan {
+  align-self: flex-start;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.action {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+.action__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.action__tool {
+  font-weight: 600;
+}
+
+.status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.status--proposee {
+  background: var(--status-proposee-bg);
+  color: var(--status-proposee-text);
+}
+
+.status--approuvee {
+  background: var(--status-approuvee-bg);
+  color: var(--status-approuvee-text);
+}
+
+.status--refusee {
+  background: var(--status-refusee-bg);
+  color: var(--status-refusee-text);
+}
+
+.status--bloquee {
+  background: var(--status-bloquee-bg);
+  color: var(--status-bloquee-text);
+}
+
+.action__reason {
+  margin: 0.375rem 0 0;
+  color: var(--text-muted);
+}
+
+.action__args {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem;
+  background: var(--bg);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  overflow-x: auto;
+}
+
+.composer {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem 0 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.composer__input {
+  flex: 1;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.625rem 0.875rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.composer__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.composer__submit {
+  border: none;
+  border-radius: var(--radius);
+  padding: 0 1.25rem;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.composer__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

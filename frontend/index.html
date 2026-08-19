@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Le Bras</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app__header">
+      <h1>Le Bras</h1>
+      <p class="app__subtitle">Agent RH — chaque action à effet de bord attend ta validation.</p>
+    </header>
+
+    <main id="thread" class="thread" aria-live="polite"></main>
+
+    <form id="composer" class="composer">
+      <textarea
+        id="message"
+        class="composer__input"
+        rows="1"
+        placeholder="Prépare l'arrivée de Panaki le 1er septembre…"
+        autofocus
+      ></textarea>
+      <button type="submit" class="composer__submit" id="submit">Envoyer</button>
+    </form>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
