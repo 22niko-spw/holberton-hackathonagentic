@@ -51,6 +51,7 @@
         <nav class="view-switch" role="tablist">
           <button type="button" id="tab-chat" class="view-switch__tab" role="tab" aria-selected="true">Chat</button>
           <button type="button" id="tab-calendar" class="view-switch__tab" role="tab" aria-selected="false">Calendrier</button>
+          <button type="button" id="tab-history" class="view-switch__tab" role="tab" aria-selected="false">Historique</button>
         </nav>
 
         <p class="main__subtitle">Chaque action à effet de bord attend ta validation avant exécution.</p>
@@ -94,6 +95,14 @@
           </div>
           <div id="calendar-detail-list" class="calendar__detail-list"></div>
         </div>
+      </section>
+
+      <section id="history-view" class="view history" hidden>
+        <div class="history__toolbar">
+          <h2 class="history__title">Journal d'audit</h2>
+          <button type="button" id="history-refresh" class="calendar__today">Rafraîchir</button>
+        </div>
+        <div id="history-list" class="history__list"></div>
       </section>
     </main>
   </div>
