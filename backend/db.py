@@ -68,6 +68,23 @@ def init_db() -> None:
             result TEXT NOT NULL,
             executed_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+            role TEXT NOT NULL,
+            content TEXT,
+            action_ids TEXT,
+            trace TEXT,
+            usage TEXT,
+            created_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()

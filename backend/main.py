@@ -7,7 +7,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.agent import DISABLED_TOOLS, TOGGLEABLE_TOOLS, run_planner
+from backend.agent import DISABLED_TOOLS, MAX_HISTORY_MESSAGES, TOGGLEABLE_TOOLS, run_planner
+from backend.conversations import (
+    append_message,
+    conversation_exists,
+    create_conversation,
+    get_conversation,
+    get_history_messages,
+)
 from backend.db import get_connection, init_db
 from backend.executor import approve_action, reject_action
 
@@ -20,10 +27,11 @@ init_db()
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[dict] = []
+    conversation_id: int | None = None
 
 
 class ChatResponse(BaseModel):
+    conversation_id: int
     message: str
     plan: list[dict]
     trace: list[dict] = []
@@ -90,6 +98,18 @@ def disable_tool(name: str) -> dict:
     return {"name": name, "enabled": False}
 
 
+@app.get("/conversations/{conversation_id}")
+def read_conversation(conversation_id: int) -> dict:
+    """Palier 4 — persistance : reprend une conversation précise au
+    chargement de la page (le navigateur indique laquelle), plans en attente
+    compris — leur statut est relu en direct depuis /actions, jamais figé
+    dans le message stocké."""
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail=f"conversation inconnue : {conversation_id}")
+    return conversation
+
+
 @app.get("/actions")
 def actions() -> list[dict]:
     """Journal d'audit consultable : toutes les actions jamais proposées,
@@ -138,18 +158,53 @@ def reject(action_id: int) -> ActionResultResponse:
     return ActionResultResponse(id=action_id, status=outcome["status"], message=message, blocked=outcome["blocked"])
 
 
+def _save_turn(conversation_id: int, user_message: str, assistant_message: str, **assistant_extra) -> None:
+    """La persistance ne doit jamais faire échouer la réponse au RH : si
+    l'écriture en base rate pour une raison quelconque, on le journalise et
+    on continue plutôt que de renvoyer une erreur 500 brute (déjà arrivé une
+    fois avec un conversation_id périmé côté navigateur)."""
+    try:
+        append_message(conversation_id, "user", user_message)
+        append_message(conversation_id, "assistant", assistant_message, **assistant_extra)
+    except Exception:
+        logger.exception("échec de sauvegarde de la conversation %s", conversation_id)
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(body: ChatRequest) -> ChatResponse:
+    # conversation_id fourni par le navigateur mais qui ne correspond plus à
+    # rien en base (ex: base réinitialisée entre-temps) : on en ouvre une
+    # nouvelle plutôt que de planter sur la contrainte de clé étrangère.
+    conversation_id = body.conversation_id
+    if conversation_id is None or not conversation_exists(conversation_id):
+        conversation_id = create_conversation()
+
+    history = get_history_messages(conversation_id, MAX_HISTORY_MESSAGES)
+
     try:
-        result = run_planner(body.message, body.history)
+        result = run_planner(body.message, history)
     except Exception:
         logger.exception("run_planner a échoué pour le message : %s", body.message)
+        error_message = "Une erreur inattendue m'a empêché de traiter cette demande. Réessaie, ou reformule."
+        _save_turn(conversation_id, body.message, error_message)
         return ChatResponse(
-            message="Une erreur inattendue m'a empêché de traiter cette demande. Réessaie, ou reformule.",
+            conversation_id=conversation_id,
+            message=error_message,
             plan=[],
             trace=[],
         )
+
+    _save_turn(
+        conversation_id,
+        body.message,
+        result["message"],
+        action_ids=result.get("action_ids", []),
+        trace=result.get("trace", []),
+        usage=result.get("usage", {}),
+    )
+
     return ChatResponse(
+        conversation_id=conversation_id,
         message=result["message"],
         plan=result["plan"],
         trace=result.get("trace", []),
