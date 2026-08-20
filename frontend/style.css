@@ -22,7 +22,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0c0a09;
     --surface: #1c1917;
     --surface-2: #16140f;
@@ -44,6 +44,29 @@
   }
 }
 
+/* Bascule manuelle (bouton soleil) : l'emporte sur la préférence système,
+   dans les deux sens. */
+:root[data-theme="dark"] {
+  --bg: #0c0a09;
+  --surface: #1c1917;
+  --surface-2: #16140f;
+  --border: #292524;
+  --text: #fafaf9;
+  --text-muted: #a8a29e;
+  --accent: #60a5fa;
+  --accent-soft: #1e293b;
+  --accent-contrast: #0c0a09;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  --status-proposee-bg: #422006;
+  --status-proposee-text: #fcd34d;
+  --status-approuvee-bg: #052e16;
+  --status-approuvee-text: #86efac;
+  --status-refusee-bg: #450a0a;
+  --status-refusee-text: #fca5a5;
+  --status-bloquee-bg: #1e293b;
+  --status-bloquee-text: #cbd5e1;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -60,19 +83,39 @@ body {
 /* ---------------------------------------------------------------------- */
 
 .app {
-  display: grid;
-  grid-template-columns: 272px minmax(0, 1fr);
   height: 100vh;
 }
 
+/* Tiroir escamotable, fermé par défaut, sur toutes les tailles d'écran —
+   pas seulement en mobile : voir .sidebar-toggle et .app--sidebar-open
+   plus bas pour l'ouverture/fermeture. */
 .sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 272px;
+  z-index: 20;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease-out;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   padding: 1.5rem 1.25rem;
   background: var(--surface-2);
   border-right: 1px solid var(--border);
+  box-shadow: var(--shadow);
   overflow-y: auto;
+}
+
+.app--sidebar-open .sidebar {
+  transform: translateX(0);
+}
+
+.app--sidebar-open::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 10;
 }
 
 .sidebar__brand {
@@ -105,22 +148,23 @@ body {
 .sidebar__new-chat {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
   font-size: 0.8125rem;
-  font-weight: 600;
-  padding: 0.625rem 0.875rem;
+  font-weight: 500;
+  padding: 0.625rem 0.75rem;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .sidebar__new-chat:hover {
+  background: var(--accent-soft);
   border-color: var(--accent);
-  color: var(--accent);
 }
 
 .sidebar__section {
@@ -200,45 +244,90 @@ body {
   outline-offset: 2px;
 }
 
-.sidebar__settings-toggle {
+.sidebar__footer {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  border: none;
-  background: transparent;
-  padding: 0;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.sidebar__gear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
   color: var(--text-muted);
-  font: inherit;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color 0.15s, border-color 0.15s;
 }
 
-.sidebar__settings-toggle:hover {
+.sidebar__gear:hover {
   color: var(--text);
+  border-color: var(--accent);
 }
 
-.sidebar__settings-toggle svg {
+.sidebar__gear svg {
   flex-shrink: 0;
   transition: transform 0.15s;
 }
 
-.sidebar__settings-toggle[aria-expanded="true"] svg {
+.sidebar__gear[aria-expanded="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.sidebar__gear[aria-expanded="true"] svg {
   transform: rotate(45deg);
+}
+
+.tools-panel-wrap {
+  position: absolute;
+  bottom: calc(100% + 0.625rem);
+  left: 0;
+  /* Largeur bornée à celle de la sidebar (272px - padding) : ancré sur
+     .sidebar__footer (pleine largeur du contenu) plutôt que sur le bouton
+     engrenage lui-même, sinon ça déborde dans la colonne du chat et se
+     retrouve visuellement sous la chatbox. */
+  width: min(220px, calc(100vw - 2.5rem));
+  padding: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  z-index: 30;
+}
+
+.tools-panel__title {
+  margin: 0 0 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.tools-panel__title--settings {
+  margin-top: 0.875rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--border);
 }
 
 .tools-panel {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 0.625rem;
 }
 
 .tools-panel .toggle {
+  align-items: flex-start;
   gap: 0.5rem;
+}
+
+.tools-panel .toggle__switch {
+  margin-top: 0.125rem;
 }
 
 .tools-panel .toggle__label {
@@ -257,11 +346,9 @@ body {
 }
 
 .sidebar__heading {
-  margin: 0;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  margin: 0 0 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--text-muted);
 }
 
@@ -273,20 +360,22 @@ body {
 }
 
 .main__header {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  min-height: 3.5rem;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
 }
 
-.main__subtitle {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-}
-
+/* Centré sur la barre entière, indépendamment du bouton hamburger (position
+   fixe, voir .sidebar-toggle) : ne pas utiliser justify-content ici, le
+   padding gauche/droite du header n'est pas symétrique. */
 .view-switch {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   gap: 0.25rem;
   padding: 0.25rem;
@@ -325,6 +414,29 @@ body {
   display: flex;
   flex-direction: column;
   animation: view-fade-in 0.18s ease-out;
+}
+
+/* Page d'accueil façon ChatGPT/Claude : tant qu'aucun message n'a été
+   envoyé, le composeur est centré au milieu de l'écran avec le message
+   d'accueil juste au-dessus. Dès le premier message (sendMessage() retire
+   cette classe), on repasse à un fil défilant classique avec le composeur
+   ancré en bas. */
+.chat-view--empty {
+  justify-content: center;
+}
+
+.chat-view--empty .thread {
+  flex: none;
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+.chat-view--empty .composer {
+  width: 100%;
+  max-width: 640px;
+  margin: 2rem auto 0;
+  border-top: none;
+  padding-top: 0;
 }
 
 @keyframes view-fade-in {
@@ -372,8 +484,15 @@ body {
   margin-top: 0.625rem;
 }
 
+/* Position fixe dans les deux états, pour pouvoir se déplacer librement :
+   en haut à gauche (page) quand la sidebar est fermée, en haut à droite
+   DE LA SIDEBAR une fois ouverte (272px de large, voir règle plus bas). */
 .sidebar-toggle {
-  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 25;
+  display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 4px;
@@ -385,6 +504,11 @@ body {
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+  transition: left 0.2s ease-out;
+}
+
+.app--sidebar-open .sidebar-toggle {
+  left: 220px;
 }
 
 .sidebar-toggle span {
@@ -442,12 +566,12 @@ body {
 .team__member {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
   width: 100%;
   border: none;
   background: transparent;
-  border-radius: 8px;
-  padding: 0.375rem 0.375rem;
+  border-radius: 10px;
+  padding: 0.5rem;
   cursor: pointer;
   text-align: left;
   font: inherit;
@@ -459,12 +583,16 @@ body {
   background: var(--surface);
 }
 
+.team__member:active {
+  background: var(--accent-soft);
+}
+
 .team__avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--accent-soft);
@@ -528,6 +656,14 @@ body {
   border-radius: 14px;
   opacity: 0.9;
 }
+
+.thread__empty-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 
 .turn {
   display: flex;
@@ -693,14 +829,26 @@ body {
   color: var(--text-muted);
 }
 
-.action__args {
-  margin: 0.5rem 0 0;
-  padding: 0.5rem;
-  background: var(--bg);
-  border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.action__summary {
+  margin: 0.625rem 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.375rem 0.75rem;
+}
+
+.action__summary dt {
+  margin: 0;
+  color: var(--text-muted);
   font-size: 0.75rem;
-  overflow-x: auto;
+  font-weight: 600;
+  white-space: nowrap;
+  padding-top: 0.0625rem;
+}
+
+.action__summary dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 .action__controls {
@@ -1245,16 +1393,6 @@ body {
   font-size: 0.75rem;
 }
 
-.history__args {
-  margin: 0.5rem 0 0;
-  padding: 0.5rem;
-  background: var(--bg);
-  border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.75rem;
-  overflow-x: auto;
-}
-
 /* ---------------------------------------------------------------------- */
 /* Composer                                                                */
 /* ---------------------------------------------------------------------- */
@@ -1314,41 +1452,16 @@ body {
 /* ---------------------------------------------------------------------- */
 
 @media (max-width: 860px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-
   .sidebar {
-    position: fixed;
-    inset: 0 25% 0 0;
-    z-index: 20;
-    transform: translateX(-100%);
-    transition: transform 0.2s ease-out;
-    box-shadow: var(--shadow);
+    width: 75vw;
   }
 
-  .app--sidebar-open .sidebar {
-    transform: translateX(0);
-  }
-
-  .app--sidebar-open::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.35);
-    z-index: 10;
-  }
-
-  .sidebar-toggle {
-    display: flex;
+  .app--sidebar-open .sidebar-toggle {
+    left: calc(75vw - 52px);
   }
 
   .bubble {
     max-width: 92%;
-  }
-
-  .main__subtitle {
-    display: none;
   }
 
   .view-switch__tab {

@@ -7,7 +7,9 @@ const newChatBtn = document.getElementById("new-chat");
 const sidebarToggle = document.getElementById("sidebar-toggle");
 const showToolsInput = document.getElementById("show-tools");
 const toolsPanel = document.getElementById("tools-panel");
+const toolsPanelWrap = document.getElementById("tools-panel-wrap");
 const toolsSettingsToggle = document.getElementById("tools-settings-toggle");
+const themeToggle = document.getElementById("theme-toggle");
 const tabChat = document.getElementById("tab-chat");
 const tabCalendar = document.getElementById("tab-calendar");
 const tabHistory = document.getElementById("tab-history");
@@ -43,9 +45,100 @@ const STATUS_LABELS = {
   BLOQUEE: "Bloquée",
 };
 
-// Mémoire de conversation côté client : renvoyée au back à chaque tour pour
-// que l'agent garde le fil (le back n'a pas d'état de session serveur).
-let history = [];
+const TOOL_LABELS = {
+  create_calendar_event: { icon: "📅", label: "Nouvel événement" },
+  send_email: { icon: "✉️", label: "Email" },
+  register_employee: { icon: "👤", label: "Nouvel employé" },
+  delete_employee: { icon: "🗑️", label: "Suppression employé" },
+  delete_calendar_event: { icon: "🗑️", label: "Suppression événement" },
+};
+
+const DATE_FMT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+const TIME_FMT = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+function formatDate(isoDate) {
+  if (!isoDate) return "—";
+  const d = new Date(isoDate);
+  return Number.isNaN(d.getTime()) ? isoDate : DATE_FMT.format(d);
+}
+
+function formatDateRange(startIso, endIso) {
+  if (!startIso) return "—";
+  const start = new Date(startIso);
+  if (Number.isNaN(start.getTime())) return startIso;
+  const startText = `${DATE_FMT.format(start)} à ${TIME_FMT.format(start)}`;
+  if (!endIso) return startText;
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) return startText;
+  return `${startText} → ${TIME_FMT.format(end)}`;
+}
+
+// Réutilise la Map "employeeNames" (id -> nom) alimentée par
+// renderCalendarLegend() côté calendrier — un seul annuaire côté front.
+function employeeName(id) {
+  return employeeNames.get(id) || id;
+}
+
+function namesOf(ids) {
+  if (!ids || ids.length === 0) return "—";
+  return ids.map(employeeName).join(", ");
+}
+
+// Best-effort : calendarEvents n'est peuplé qu'après un passage par l'onglet
+// Calendrier. Si l'event_id n'y est pas (pas encore chargé, ou déjà
+// supprimé), on retombe sur l'id brut plutôt que de planter l'affichage.
+function eventById(id) {
+  return calendarEvents.find((ev) => String(ev.id) === String(id));
+}
+
+// Traduit les args techniques d'une action en résumé lisible pour un RH —
+// plus de JSON brut dans la carte de validation. Filet de sécurité pour un
+// outil non reconnu : on affiche quand même ses args plutôt que rien.
+function describeAction(action) {
+  const meta = TOOL_LABELS[action.tool] || { icon: "⚙️", label: action.tool };
+  const args = action.args || {};
+  const lines = [];
+
+  if (action.tool === "create_calendar_event") {
+    lines.push({ label: "Titre", value: args.title || "—" });
+    lines.push({ label: "Quand", value: formatDateRange(args.start, args.end) });
+    lines.push({ label: "Avec", value: namesOf(args.employee_ids) });
+    if (args.description) lines.push({ label: "Détails", value: args.description });
+  } else if (action.tool === "send_email") {
+    lines.push({ label: "Objet", value: args.subject || "—" });
+    lines.push({ label: "À", value: namesOf(args.employee_ids) });
+    if (args.body) {
+      lines.push({ label: "Message", value: args.body.length > 160 ? `${args.body.slice(0, 160)}…` : args.body });
+    }
+  } else if (action.tool === "register_employee") {
+    lines.push({ label: "Nom", value: args.name || "—" });
+    lines.push({ label: "Poste", value: [args.role, args.department].filter(Boolean).join(" · ") || "—" });
+    lines.push({ label: "Manager", value: args.manager_id ? employeeName(args.manager_id) : "Aucun" });
+    lines.push({ label: "Arrivée", value: formatDate(args.start_date) });
+  } else if (action.tool === "delete_employee") {
+    lines.push({ label: "Employé", value: employeeName(args.employee_id) });
+    lines.push({ label: "Conséquence", value: "Supprime aussi tous ses événements de calendrier." });
+  } else if (action.tool === "delete_calendar_event") {
+    const event = eventById(args.event_id);
+    lines.push({ label: "Événement", value: event ? event.title : `#${args.event_id}` });
+    if (event) {
+      lines.push({ label: "Quand", value: formatDateRange(event.start, event.end) });
+      lines.push({ label: "Employé", value: event.employee_name || employeeName(event.employee_id) });
+    }
+  } else {
+    lines.push({ label: "Détails", value: JSON.stringify(args) });
+  }
+
+  return { meta, lines };
+}
+
+// La conversation elle-même est persistée côté serveur (SQLite, voir
+// backend/conversations.py) : ici on ne garde qu'un pointeur vers laquelle
+// est "en cours", pas son contenu. localStorage plutôt que "la plus récente
+// en base" : sinon "Nouvelle conversation" + F5 rouvrirait l'ancienne, rien
+// de plus récent n'ayant encore été créé côté serveur à ce moment-là.
+const CONVERSATION_KEY = "le-bras:conversation-id";
+let conversationId = Number(localStorage.getItem(CONVERSATION_KEY)) || null;
 
 // ---------------------------------------------------------------------------
 // Calendrier fictif — voir SPEC.md (hors scope) : agenda mocké en SQLite,
@@ -293,9 +386,11 @@ async function loadHistory() {
       const head = document.createElement("div");
       head.className = "history__head";
 
+      const { meta: toolMeta, lines } = describeAction(item);
+
       const tool = document.createElement("span");
       tool.className = "history__tool";
-      tool.textContent = `#${item.id} · ${item.tool}`;
+      tool.textContent = `#${item.id} · ${toolMeta.icon} ${toolMeta.label}`;
       head.appendChild(tool);
 
       const status = document.createElement("span");
@@ -315,14 +410,21 @@ async function loadHistory() {
       if (item.executed_at) {
         const meta = document.createElement("p");
         meta.className = "history__meta";
-        meta.textContent = `Exécutée le ${item.executed_at.replace("T", " à ")}`;
+        meta.textContent = `Exécutée le ${formatDateRange(item.executed_at)}`;
         card.appendChild(meta);
       }
 
-      const args = document.createElement("pre");
-      args.className = "history__args";
-      args.textContent = JSON.stringify(item.result ? { args: item.args, result: item.result } : item.args, null, 2);
-      card.appendChild(args);
+      const summary = document.createElement("dl");
+      summary.className = "action__summary";
+      for (const { label, value } of lines) {
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        dd.textContent = value;
+        summary.appendChild(dt);
+        summary.appendChild(dd);
+      }
+      card.appendChild(summary);
 
       historyList.appendChild(card);
     }
@@ -347,9 +449,13 @@ function renderEmptyState() {
   empty.className = "thread__empty";
   empty.innerHTML = `
     <img src="/static/assets/logo.png" alt="" class="thread__empty-logo" />
-    <p>Décris ce que tu veux faire, l'agent proposera un plan à valider.</p>
+    <p class="thread__empty-title">Bienvenue</p>
   `;
   thread.appendChild(empty);
+  // Composeur centré à l'écran tant qu'aucun message n'a été envoyé (comme
+  // une page d'accueil) ; redescend en bas dès le premier message, voir
+  // sendMessage().
+  chatView.classList.add("chat-view--empty");
 }
 
 function addUserBubble(text) {
@@ -386,9 +492,11 @@ function renderPlan(plan) {
     const head = document.createElement("div");
     head.className = "action__head";
 
+    const { meta, lines } = describeAction(action);
+
     const tool = document.createElement("span");
     tool.className = "action__tool";
-    tool.textContent = action.tool;
+    tool.textContent = `${meta.icon} ${meta.label}`;
     head.appendChild(tool);
 
     const status = document.createElement("span");
@@ -405,10 +513,17 @@ function renderPlan(plan) {
       card.appendChild(reason);
     }
 
-    const args = document.createElement("pre");
-    args.className = "action__args";
-    args.textContent = JSON.stringify(action.args, null, 2);
-    card.appendChild(args);
+    const summary = document.createElement("dl");
+    summary.className = "action__summary";
+    for (const { label, value } of lines) {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      summary.appendChild(dt);
+      summary.appendChild(dd);
+    }
+    card.appendChild(summary);
 
     if (action.status === "PROPOSEE") {
       const controls = document.createElement("div");
@@ -469,6 +584,18 @@ async function decideAction(action, decision, card, statusEl) {
         closeDayDetail();
         renderCalendarGrid();
       }
+    }
+
+    if (data.status === "EXECUTEE" && action.tool === "delete_calendar_event") {
+      await loadCalendar();
+      closeDayDetail();
+      renderCalendarGrid();
+    }
+
+    if (data.status === "EXECUTEE" && action.tool === "delete_employee") {
+      await Promise.all([loadTeam(), loadCalendar()]);
+      closeDayDetail();
+      renderCalendarGrid();
     }
   } catch (err) {
     const error = document.createElement("p");
@@ -567,7 +694,10 @@ function applyToolsVisibility(turn) {
 }
 
 async function sendMessage(message) {
-  if (thread.querySelector(".thread__empty")) thread.innerHTML = "";
+  if (thread.querySelector(".thread__empty")) {
+    thread.innerHTML = "";
+    chatView.classList.remove("chat-view--empty");
+  }
 
   const turn = addUserBubble(message);
   const pending = addPendingBubble();
@@ -579,7 +709,7 @@ async function sendMessage(message) {
     const res = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, conversation_id: conversationId }),
     });
 
     if (!res.ok) {
@@ -587,6 +717,8 @@ async function sendMessage(message) {
     }
 
     const data = await res.json();
+    conversationId = data.conversation_id;
+    localStorage.setItem(CONVERSATION_KEY, String(conversationId));
 
     pending.className = "bubble bubble--agent";
     pending.textContent = data.message || "(pas de réponse)";
@@ -599,9 +731,6 @@ async function sendMessage(message) {
 
     turnTraces.set(turn, data.trace);
     applyToolsVisibility(turn);
-
-    history.push({ role: "user", content: message });
-    history.push({ role: "assistant", content: data.message || "" });
   } catch (err) {
     pending.className = "bubble bubble--error";
     pending.textContent = `Une erreur est survenue : ${err.message}`;
@@ -612,12 +741,22 @@ async function sendMessage(message) {
 }
 
 function resetConversation() {
-  history = [];
+  conversationId = null;
+  localStorage.removeItem(CONVERSATION_KEY);
   turnTraces.clear();
   renderEmptyState();
   input.value = "";
   input.style.height = "auto";
   input.focus();
+}
+
+// "get_employee_availability" est trop long pour la largeur du popover et
+// déborde sans retour à la ligne naturel (nom en un seul mot, monospace) :
+// on force la coupure après le 2e "_" plutôt que de laisser le switch
+// se faire pousser hors du panneau.
+function displayToolName(name) {
+  if (name === "get_employee_availability") return "get_employee_<br>availability";
+  return name;
 }
 
 // Débrancher un outil en direct (démo palier 3 : "je débranche un outil et
@@ -638,7 +777,7 @@ async function loadTools() {
       const text = document.createElement("span");
       text.className = "toggle__label";
       text.innerHTML = `
-        ${item.name}
+        ${displayToolName(item.name)}
         <span class="toggle__hint">${item.enabled ? "Disponible" : "Indisponible (désactivé)"}</span>
       `;
       label.appendChild(text);
@@ -761,11 +900,67 @@ input.addEventListener("input", () => {
 
 newChatBtn.addEventListener("click", resetConversation);
 
-toolsSettingsToggle.addEventListener("click", () => {
+// Thème clair/sombre : suit prefers-color-scheme par défaut (voir
+// style.css), sauf si l'utilisateur a explicitement choisi via ce bouton
+// — mémorisé en localStorage, appliqué avant le premier rendu (script
+// inline dans <head>) pour éviter un flash du mauvais thème.
+const THEME_KEY = "le-bras:theme";
+
+function currentTheme() {
+  const explicit = document.documentElement.getAttribute("data-theme");
+  if (explicit) return explicit;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+// L'icône affichée est celle du thème vers lequel on bascule si on clique
+// (convention usuelle) : soleil visible en mode sombre (clic -> clair),
+// lune visible en mode clair (clic -> sombre).
+const themeIconSun = document.getElementById("theme-icon-sun");
+const themeIconMoon = document.getElementById("theme-icon-moon");
+
+function updateThemeIcon() {
+  // Ne pas utiliser .hidden ici : l'attribut HTML "hidden" ne s'applique pas
+  // de façon fiable aux <svg> (namespace différent du HTML) dans certains
+  // navigateurs — display piloté directement à la place.
+  const isDark = currentTheme() === "dark";
+  themeIconSun.style.display = isDark ? "" : "none";
+  themeIconMoon.style.display = isDark ? "none" : "";
+}
+
+themeToggle.addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem(THEME_KEY, next);
+  updateThemeIcon();
+});
+
+// Le thème peut aussi changer sans clic (préférence système modifiée pendant
+// que la page est ouverte) si l'utilisateur n'a rien choisi explicitement.
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (!document.documentElement.getAttribute("data-theme")) updateThemeIcon();
+});
+
+updateThemeIcon();
+
+function closeToolsPanel() {
+  toolsSettingsToggle.setAttribute("aria-expanded", "false");
+  toolsPanelWrap.hidden = true;
+}
+
+toolsSettingsToggle.addEventListener("click", (event) => {
+  event.stopPropagation();
   const expanded = toolsSettingsToggle.getAttribute("aria-expanded") === "true";
   toolsSettingsToggle.setAttribute("aria-expanded", String(!expanded));
-  toolsPanel.hidden = expanded;
+  toolsPanelWrap.hidden = expanded;
   if (!expanded) loadTools(); // resynchronise avec le serveur à chaque ouverture
+});
+
+// Popover flottant au-dessus de l'icône engrenage : se ferme au clic
+// ailleurs, comme n'importe quel menu.
+document.addEventListener("click", (event) => {
+  if (toolsPanelWrap.hidden) return;
+  if (toolsPanelWrap.contains(event.target) || toolsSettingsToggle.contains(event.target)) return;
+  closeToolsPanel();
 });
 
 showToolsInput.addEventListener("change", () => {
@@ -777,7 +972,9 @@ showToolsInput.addEventListener("change", () => {
 const appEl = document.querySelector(".app");
 
 sidebarToggle.addEventListener("click", () => {
-  appEl.classList.toggle("app--sidebar-open");
+  const open = appEl.classList.toggle("app--sidebar-open");
+  sidebarToggle.setAttribute("aria-expanded", String(open));
+  sidebarToggle.setAttribute("aria-label", open ? "Masquer l'équipe" : "Afficher l'équipe");
 });
 
 document.addEventListener("click", (event) => {
@@ -811,7 +1008,76 @@ calendarToday.addEventListener("click", () => {
 
 calendarDetailClose.addEventListener("click", closeDayDetail);
 
-renderEmptyState();
+// Palier 4 — persistance : la conversation entière (pas seulement les
+// actions en attente) survit à un rechargement de page, via SQLite côté
+// serveur (backend/conversations.py). Le statut de chaque action citée dans
+// un message est relu en direct depuis /actions plutôt que figé au moment
+// de l'envoi : une action approuvée entre-temps (autre onglet, etc.)
+// réapparaît avec son vrai statut, pas l'ancien.
+async function restoreConversation() {
+  if (!conversationId) {
+    renderEmptyState();
+    return;
+  }
+
+  try {
+    const [convRes, actionsRes] = await Promise.all([
+      fetch(`/conversations/${conversationId}`),
+      fetch("/actions"),
+    ]);
+    if (!convRes.ok) {
+      // conversation_id périmé (ex: base réinitialisée) : on oublie le pointeur.
+      localStorage.removeItem(CONVERSATION_KEY);
+      throw new Error(`Erreur ${convRes.status}`);
+    }
+    const conversation = await convRes.json();
+    const allActions = actionsRes.ok ? await actionsRes.json() : [];
+    const actionsById = new Map(allActions.map((a) => [a.id, a]));
+
+    if (conversation.messages.length === 0) {
+      renderEmptyState();
+      return;
+    }
+
+    conversationId = conversation.conversation_id;
+    thread.innerHTML = "";
+    chatView.classList.remove("chat-view--empty");
+
+    const messages = conversation.messages;
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== "user") continue; // on avance par paire user -> assistant
+      const next = messages[i + 1];
+
+      const turn = addUserBubble(msg.content);
+
+      if (next && next.role === "assistant") {
+        const bubble = document.createElement("div");
+        bubble.className = "bubble bubble--agent";
+        bubble.textContent = next.content || "(pas de réponse)";
+        turn.appendChild(bubble);
+
+        const plan = (next.action_ids || []).map((id) => actionsById.get(id)).filter(Boolean);
+        const planEl = renderPlan(plan);
+        if (planEl) turn.appendChild(planEl);
+
+        const usageEl = renderUsage(next.usage);
+        if (usageEl) turn.appendChild(usageEl);
+
+        turnTraces.set(turn, next.trace || []);
+        applyToolsVisibility(turn);
+
+        i++; // message assistant déjà consommé
+      }
+    }
+
+    thread.scrollTop = thread.scrollHeight;
+  } catch (err) {
+    renderEmptyState();
+  }
+}
+
+restoreConversation();
 loadTeam();
 loadCalendar();
 loadTools();
