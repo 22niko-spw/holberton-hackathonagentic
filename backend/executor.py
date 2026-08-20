@@ -4,7 +4,13 @@ from datetime import date, datetime
 
 from backend.agent import DISABLED_TOOLS
 from backend.db import get_connection
-from backend.tools import create_calendar_event, register_employee, send_email
+from backend.tools import (
+    create_calendar_event,
+    delete_calendar_event,
+    delete_employee,
+    register_employee,
+    send_email,
+)
 
 
 def _run_create_calendar_event(action_id: int, args: dict):
@@ -39,10 +45,20 @@ def _run_register_employee(action_id: int, args: dict):
     )
 
 
+def _run_delete_employee(action_id: int, args: dict):
+    return delete_employee(action_id=str(action_id), employee_id=args["employee_id"])
+
+
+def _run_delete_calendar_event(action_id: int, args: dict):
+    return delete_calendar_event(action_id=str(action_id), event_id=args["event_id"])
+
+
 EXECUTORS = {
     "create_calendar_event": _run_create_calendar_event,
     "send_email": _run_send_email,
     "register_employee": _run_register_employee,
+    "delete_employee": _run_delete_employee,
+    "delete_calendar_event": _run_delete_calendar_event,
 }
 
 
@@ -55,6 +71,10 @@ def _confirmation_message(tool: str, args: dict, result) -> str:
     if tool == "send_email":
         who = ", ".join(args.get("employee_ids", []))
         return f"Email « {args['subject']} » envoyé à {who}."
+    if tool == "delete_employee":
+        return f"{result['name']} a été supprimé·e du système, ainsi que ses événements de calendrier."
+    if tool == "delete_calendar_event":
+        return f"Événement « {result['title']} » supprimé du calendrier."
     return f"Action {tool} exécutée."
 
 

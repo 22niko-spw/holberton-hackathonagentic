@@ -34,6 +34,38 @@ def list_employees(name_contains: str | None = None) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def list_calendar_events(
+    employee_id: str | None = None,
+    title_contains: str | None = None,
+) -> list[dict]:
+    """Liste les événements existants, pour que le modèle retrouve l'event_id
+    à cibler avant de proposer une suppression (voir delete_calendar_event).
+    Toujours plafonné à 20 résultats (les plus proches dans le temps) :
+    affiner avec employee_id/title_contains pour une recherche précise."""
+    conn = get_connection()
+    query = (
+        "SELECT calendar_events.id, calendar_events.employee_id, "
+        "employees.name AS employee_name, calendar_events.start, "
+        "calendar_events.end, calendar_events.title "
+        "FROM calendar_events JOIN employees ON employees.id = calendar_events.employee_id"
+    )
+    clauses = []
+    params: list[str] = []
+    if employee_id:
+        clauses.append("calendar_events.employee_id = ?")
+        params.append(employee_id)
+    if title_contains:
+        clauses.append("calendar_events.title LIKE ?")
+        params.append(f"%{title_contains}%")
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY calendar_events.start LIMIT 20"
+
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def get_employee_availability(
     employee_ids: list[str],
     date_range: tuple[date, date],
@@ -207,6 +239,53 @@ def register_employee(
 
     _journal_record(action_id, {"employee_id": employee_id})
     return employee_id
+
+
+def delete_employee(action_id: str, employee_id: str) -> dict:
+    """Supprime un employé et, en cascade, ses événements de calendrier —
+    sinon la contrainte de clé étrangère sur calendar_events.employee_id
+    bloquerait la suppression. Irréversible, comme toute action ici :
+    seule l'approbation humaine en amont protège contre une erreur."""
+    cached = _journal_get(action_id)
+    if cached is not None:
+        return cached
+
+    conn = get_connection()
+    row = conn.execute("SELECT name FROM employees WHERE id = ?", (employee_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise ValueError(f"employee_id inconnu : {employee_id}")
+    name = row["name"]
+
+    conn.execute("DELETE FROM calendar_events WHERE employee_id = ?", (employee_id,))
+    conn.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
+    conn.commit()
+    conn.close()
+
+    result = {"employee_id": employee_id, "name": name}
+    _journal_record(action_id, result)
+    return result
+
+
+def delete_calendar_event(action_id: str, event_id: int) -> dict:
+    cached = _journal_get(action_id)
+    if cached is not None:
+        return cached
+
+    conn = get_connection()
+    row = conn.execute("SELECT title FROM calendar_events WHERE id = ?", (event_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise ValueError(f"event_id inconnu : {event_id}")
+    title = row["title"]
+
+    conn.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+
+    result = {"event_id": event_id, "title": title}
+    _journal_record(action_id, result)
+    return result
 
 
 # ---------------------------------------------------------------------------
