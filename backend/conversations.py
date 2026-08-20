@@ -71,6 +71,21 @@ def get_history_messages(conversation_id: int, limit: int) -> list[dict]:
     return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
 
 
+def find_conversation_for_action(action_id: int) -> int | None:
+    """Retrouve la conversation qui a proposé cette action, pour pouvoir y
+    enchaîner automatiquement une suite (ex: relance après approbation de
+    register_employee). Pas de colonne conversation_id sur actions : on
+    cherche plutôt dans action_ids, déjà stocké sur le message assistant."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT messages.conversation_id FROM messages, json_each(messages.action_ids) "
+        "WHERE messages.action_ids IS NOT NULL AND json_each.value = ? LIMIT 1",
+        (action_id,),
+    ).fetchone()
+    conn.close()
+    return row["conversation_id"] if row else None
+
+
 def get_conversation(conversation_id: int) -> dict | None:
     """Pour la restauration au chargement de la page : cette conversation
     précise (celle que le navigateur a retenue), avec tous ses messages

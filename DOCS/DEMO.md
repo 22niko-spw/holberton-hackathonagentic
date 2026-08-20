@@ -1,39 +1,44 @@
 # DEMO.md
 
-Happy path de la démo finale (6 étapes), rejoué tel quel au palier 4 et en
-soutenance. Volontairement limité à ce qu'exige le MVP — pas de fonctions
-bonus (annulation, replanification) dans ce scénario, voir AGENTS.md pour
-ces cas.
+Happy path de la démo finale, rejoué tel quel au palier 4 et en soutenance.
+Volontairement limité à ce qu'exige le MVP — pas de fonctions bonus
+(annulation, replanification) dans ce scénario, voir AGENTS.md pour ces cas.
 
-1. J'ouvre l'application. Un seul champ au centre de l'écran. Je saisis :
+1. J'ouvre Tauturu. Écran d'accueil centré, un seul champ. Je saisis :
    "Prépare l'arrivée de Panaki, développeur backend, qui commence lundi."
 
-2. Le plan se construit sous mes yeux. L'agent consulte d'abord les
-   disponibilités via `find_common_slot`, puis propose 4 actions, toutes
-   décochées : enregistrer Panaki, poser la réunion d'intégration avec son
-   manager, envoyer un mail de bienvenue à Panaki, annoncer son arrivée à
-   l'équipe. Chaque ligne affiche l'outil concerné, ses arguments, la raison
-   invoquée, et si elle est réversible.
+2. L'agent vérifie d'abord que Panaki n'existe pas déjà (`list_employees`),
+   puis propose UNE SEULE carte : enregistrer Panaki. Le message explique
+   pourquoi ça s'arrête là pour l'instant — tant que cette fiche n'existe
+   pas réellement en base, l'agent ne peut ni consulter ses disponibilités,
+   ni lui envoyer de mail, ni le convier à une réunion.
 
-3. La ligne "mail de bienvenue" est marquée IRRÉVERSIBLE en rouge, avant
-   tout clic. La ligne "annonce à l'équipe" indique qu'elle dépend de la
-   précédente : on ne prévient pas l'équipe d'un mail de bienvenue qui n'est
-   jamais parti.
+3. J'approuve l'enregistrement. Sans rien retaper, un nouveau message
+   agent apparaît tout de suite dans le fil : l'agent a lui-même repris la
+   main et propose maintenant 4 cartes d'un coup — réunion d'intégration
+   avec le manager (Adam), mail de bienvenue à Panaki seul, réunion
+   collective avec toute l'équipe, mail à toute l'équipe qui annonce
+   l'arrivée et invite à cette réunion. Chaque carte affiche l'outil, un
+   résumé structuré (qui, quand, objet/titre) et la raison invoquée.
 
-4. J'approuve l'enregistrement de Panaki et la réunion d'intégration. Je
-   refuse le mail de bienvenue. La ligne "annonce à l'équipe" bascule
-   automatiquement en bloquée, avec le motif affiché : elle dépendait d'une
-   action refusée.
+4. Je refuse la réunion collective. La carte du mail d'équipe en dépend
+   (il cite l'heure de la réunion — inutile d'inviter à un horaire qui
+   n'existera jamais) : elle passe "Bloquée" instantanément, sans recharger
+   la page, et perd ses boutons.
 
-5. Je lance l'exécution. Les deux actions approuvées partent l'une après
-   l'autre. La fiche de Panaki apparaît réellement en base, l'événement de
-   réunion d'intégration apparaît réellement dans le calendrier mocké. Le
-   journal se remplit en direct, horodaté.
+5. J'approuve les deux cartes restantes (réunion manager, mail de
+   bienvenue à Panaki). Chaque approbation exécute réellement l'action
+   (pas d'étape "lancer l'exécution" séparée). Je bascule sur l'onglet
+   Calendrier : la réunion d'intégration y apparaît.
 
-6. Je consulte le journal : deux actions exécutées, une refusée, une
-   bloquée. La trace complète du plan, de la décision humaine et du
-   résultat est disponible en un coup d'œil.
+6. Onglet Historique : les 5 actions de la session, avec leur statut final
+   (3 exécutées, 1 refusée, 1 bloquée) et l'horodatage de chacune.
 
-**Cas d'échec de la minute 5** : le refus du mail de bienvenue qui bloque
-automatiquement l'annonce à l'équipe. Ce n'est pas un bug, c'est le
-garde-fou des dépendances qui fonctionne.
+**Limites connues à anticiper pendant la démo :**
+- Pas de badge "irréversible" ni d'affichage du `depends_on` sur les
+  cartes avant décision — la dépendance ne se révèle qu'au moment où elle
+  bloque quelque chose.
+- Le nombre et l'ordre exact des 4 actions proposées à l'étape 3 peuvent
+  varier légèrement d'une exécution à l'autre (modèle non-déterministe) —
+  si le mail d'équipe manque à l'appel, retaper "Continue." le fait
+  apparaître.

@@ -554,6 +554,52 @@ function renderPlan(plan) {
   return container;
 }
 
+// Ajoute un tour agent sans bulle utilisateur associée (ex: la suite d'un
+// plan relancée automatiquement après approbation, voir AUTO_CONTINUE_TOOLS
+// côté backend) — même rendu qu'un tour de chat normal, juste sans message
+// tapé par le RH.
+function renderAgentTurn(continuation) {
+  const turn = document.createElement("div");
+  turn.className = "turn";
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble bubble--agent";
+  bubble.textContent = continuation.message || "(pas de réponse)";
+  turn.appendChild(bubble);
+
+  const planEl = renderPlan(continuation.plan);
+  if (planEl) turn.appendChild(planEl);
+
+  const usageEl = renderUsage(continuation.usage);
+  if (usageEl) turn.appendChild(usageEl);
+
+  turnTraces.set(turn, continuation.trace);
+  applyToolsVisibility(turn);
+
+  thread.appendChild(turn);
+  thread.scrollTop = thread.scrollHeight;
+  return turn;
+}
+
+// Met à jour la carte d'une action bloquée par un refus ailleurs dans le
+// fil (voir "blocked" dans la réponse de decideAction) — sans effet si sa
+// carte n'est pas affichée dans le fil actuel (rien à mettre à jour).
+function markActionBlocked(actionId) {
+  const card = thread.querySelector(`.action[data-action-id="${actionId}"]`);
+  if (!card) return;
+
+  card.className = "action action--bloquee";
+
+  const status = card.querySelector(".status");
+  if (status) {
+    status.className = "status status--bloquee";
+    status.textContent = STATUS_LABELS.BLOQUEE;
+  }
+
+  const controls = card.querySelector(".action__controls");
+  if (controls) controls.remove();
+}
+
 // Approuver déclenche l'exécution réelle (idempotente) de l'action via
 // l'exécuteur ; refuser bloque en cascade tout ce qui en dépendait.
 async function decideAction(action, decision, card, statusEl) {
@@ -579,6 +625,15 @@ async function decideAction(action, decision, card, statusEl) {
 
     if (controls) controls.remove();
 
+    // Le refus peut bloquer en cascade d'autres actions déjà affichées
+    // ailleurs dans le fil (ex: un mail qui dépendait de la réunion qu'on
+    // vient de refuser) — sans ça leur carte restait figée sur "Proposée"
+    // avec un bouton Approuver qui semblait actif mais échouait, jusqu'au
+    // rechargement de la page.
+    if (data.blocked && data.blocked.length > 0) {
+      for (const blockedId of data.blocked) markActionBlocked(blockedId);
+    }
+
     if (data.status === "EXECUTEE" && action.tool === "create_calendar_event") {
       await loadCalendar();
       if (action.args && action.args.start) {
@@ -598,6 +653,17 @@ async function decideAction(action, decision, card, statusEl) {
       await Promise.all([loadTeam(), loadCalendar()]);
       closeDayDetail();
       renderCalendarGrid();
+    }
+
+    if (data.status === "EXECUTEE" && action.tool === "register_employee") {
+      await loadTeam();
+    }
+
+    // register_employee approuvé : le planner enchaîne tout de suite sur
+    // la suite du plan (réunions, mails) sans que le RH ait à retaper
+    // "continue" lui-même — voir AUTO_CONTINUE_TOOLS côté backend.
+    if (data.continuation) {
+      renderAgentTurn(data.continuation);
     }
   } catch (err) {
     const error = document.createElement("p");

@@ -115,6 +115,7 @@ def approve_action(action_id: int) -> dict:
 
         return {
             "status": "EXECUTEE",
+            "tool": action["tool"],
             "result": result,
             "message": _confirmation_message(action["tool"], args, result),
         }

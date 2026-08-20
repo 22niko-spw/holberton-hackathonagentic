@@ -12,6 +12,7 @@ from backend.conversations import (
     append_message,
     conversation_exists,
     create_conversation,
+    find_conversation_for_action,
     get_conversation,
     get_history_messages,
 )
@@ -44,6 +45,14 @@ class ActionResultResponse(BaseModel):
     status: str
     message: str
     blocked: list[int] = []
+    continuation: dict | None = None
+
+
+# Outils dont l'approbation débloque mécaniquement la suite d'un plan
+# (l'employee_id de register_employee n'existe qu'après son exécution) :
+# on relance le planner tout de suite plutôt que d'attendre que le RH
+# retape "continue" lui-même.
+AUTO_CONTINUE_TOOLS = {"register_employee"}
 
 
 @app.get("/")
@@ -143,7 +152,16 @@ def approve(action_id: int) -> ActionResultResponse:
         outcome = approve_action(action_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return ActionResultResponse(id=action_id, status=outcome["status"], message=outcome["message"])
+
+    continuation = None
+    if outcome["status"] == "EXECUTEE" and outcome.get("tool") in AUTO_CONTINUE_TOOLS:
+        conversation_id = find_conversation_for_action(action_id)
+        if conversation_id is not None:
+            continuation = _continue_conversation(conversation_id)
+
+    return ActionResultResponse(
+        id=action_id, status=outcome["status"], message=outcome["message"], continuation=continuation
+    )
 
 
 @app.post("/actions/{action_id}/reject", response_model=ActionResultResponse)
@@ -168,6 +186,36 @@ def _save_turn(conversation_id: int, user_message: str, assistant_message: str, 
         append_message(conversation_id, "assistant", assistant_message, **assistant_extra)
     except Exception:
         logger.exception("échec de sauvegarde de la conversation %s", conversation_id)
+
+
+def _continue_conversation(conversation_id: int) -> dict | None:
+    """Relance le planner juste après l'approbation d'une action qui
+    débloque la suite d'un plan (ex: register_employee -> le reste de
+    l'arrivée), pour que le RH n'ait pas à retaper "continue" lui-même.
+    None si ça échoue (quota, etc.) : l'approbation elle-même reste
+    réussie, seule la relance automatique est manquée."""
+    history = get_history_messages(conversation_id, MAX_HISTORY_MESSAGES)
+    try:
+        result = run_planner("Continue.", history)
+    except Exception:
+        logger.exception("relance automatique échouée pour la conversation %s", conversation_id)
+        return None
+
+    _save_turn(
+        conversation_id,
+        "Continue.",
+        result["message"],
+        action_ids=result.get("action_ids", []),
+        trace=result.get("trace", []),
+        usage=result.get("usage", {}),
+    )
+    return {
+        "conversation_id": conversation_id,
+        "message": result["message"],
+        "plan": result["plan"],
+        "trace": result.get("trace", []),
+        "usage": result.get("usage", {}),
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)

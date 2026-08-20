@@ -4,7 +4,7 @@ import time
 from datetime import date
 
 from dotenv import load_dotenv
-from groq import Groq
+from openai import OpenAI
 
 from backend.db import get_connection
 from backend.tools import (
@@ -17,10 +17,10 @@ from backend.tools import (
 
 load_dotenv()
 
-_client = Groq(api_key=os.environ["GROQ_API_KEY"])
-_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+_model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
-MAX_TURNS = 10  # le plan complet "arrivée" (2 résolutions de nom + 1 créneau + 4 propose_action) en prend déjà 7
+MAX_TURNS = 14  # le round 2 du plan "arrivée" (list_employees + 2 find_common_slot + 4 propose_action) en prend déjà ~8
 MAX_ACTIONS_PER_PLAN = 8
 
 # Outils qu'on peut "débrancher" en direct (démo / checkpoint palier 3),
@@ -35,10 +35,10 @@ TOGGLEABLE_TOOLS = [
 ]
 DISABLED_TOOLS: set[str] = set()
 
-# Tarifs Groq, USD / 1M tokens (console.groq.com/docs/model, relevé le 2026-08-19).
+# Tarifs OpenAI, USD / 1M tokens (openai.com/api/pricing, relevé le 2026-08-20).
 # Absent du dict => cout non calcule (affiche a None cote front) plutot que d'inventer un prix.
 PRICING_PER_MILLION_TOKENS = {
-    "openai/gpt-oss-120b": {"input": 0.15, "output": 0.60},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
 }
 
 _WEEKDAYS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
@@ -65,37 +65,65 @@ SYSTEM_PROMPT = (
     "voit déjà l'action proposée sous forme de carte dans l'interface, "
     "l'y répéter en texte ne remplace pas l'appel réel et l'action ne "
     "sera jamais créée. Cette règle vaut pour tout appel de "
-    "propose_action, pas seulement register_employee. Rien de tout ça ne "
-    "dispense de la validation humaine : chaque action reste PROPOSEE "
-    "tant que le RH ne l'a pas explicitement approuvée sur sa carte.\n\n"
+    "propose_action, pas seulement register_employee, et pas seulement "
+    "pour le JSON brut : décrire une action en langage naturel ('je "
+    "propose maintenant : ...', une liste numérotée d'actions à venir) "
+    "sans avoir réellement appelé propose_action pour CHACUNE d'elles est "
+    "tout aussi trompeur — le RH croirait des cartes créées qui "
+    "n'existent pas. Quand un plan comprend plusieurs actions à proposer "
+    "dans le même tour, appelle propose_action pour toutes, une par une, "
+    "avant d'écrire le message texte qui les résume — n'annonce jamais "
+    "une action à venir sans l'avoir déjà proposée pour de vrai. Rien de "
+    "tout ça ne dispense de la validation humaine : chaque action reste "
+    "PROPOSEE tant que le RH ne l'a pas explicitement approuvée sur sa "
+    "carte.\n\n"
     "PLANIFIER — une fois les identifiants résolus, utilise toi-même "
     "get_employee_availability et find_common_slot pour trouver un "
     "créneau. Ne demande jamais à l'utilisateur de choisir parmi des "
     "contraintes abstraites : propose UN créneau concret et précis "
     "('le 24/08 à 9h'), puis demande une confirmation simple avant "
     "d'appeler propose_action.\n\n"
-    "ARRIVÉE D'UN NOUVEL EMPLOYÉ — le plan complet comprend à terme 4 "
-    "actions : (1) register_employee, (2) une réunion d'intégration avec "
-    "son manager (trouve un créneau via find_common_slot), (3) un email de "
-    "bienvenue au nouvel arrivant (send_email), (4) une annonce de son "
-    "arrivée à toute l'équipe (send_email, avec depends_on pointant vers "
-    "l'action_id du mail de bienvenue). Mais l'employee_id d'un nouvel "
-    "arrivant n'existe qu'une fois register_employee EXÉCUTÉ (après "
-    "validation humaine) — avant ça, get_employee_availability, "
-    "find_common_slot et send_email le rejetteraient comme inconnu. Donc "
-    "en deux temps, jamais en un seul tour : "
+    "ARRIVÉE D'UN NOUVEL EMPLOYÉ — le plan complet comprend à terme 5 "
+    "actions : "
+    "(1) register_employee. "
+    "(2) une réunion d'intégration avec son seul manager (create_calendar_event, "
+    "trouve un créneau via find_common_slot entre le nouvel arrivant et son "
+    "manager). "
+    "(3) un email de bienvenue au nouvel arrivant seul (send_email). "
+    "(4) une réunion de bienvenue collective, avec le nouvel arrivant ET le "
+    "reste de l'équipe (create_calendar_event ; liste tout le monde via "
+    "list_employees sans filtre pour composer les attendees, puis "
+    "find_common_slot entre eux tous). "
+    "(5) un email à TOUS les employés (nouvel arrivant inclus) qui annonce "
+    "l'arrivée et invite à la réunion (4) en donnant sa date et son heure "
+    "exactes (send_email). APPELLE PROPOSE_ACTION POUR (4) EN PREMIER, PUIS "
+    "POUR (5) — jamais l'inverse : (5) doit citer l'horaire réel de (4), "
+    "donc (4) doit déjà exister quand tu écris (5). depends_on de (5) = "
+    "l'action_id de (4) — c'est TOUJOURS l'email qui dépend de la réunion, "
+    "jamais le contraire : ne mets jamais depends_on sur (4), une réunion "
+    "n'a besoin d'aucun email pour exister. "
+    "Mais l'employee_id d'un nouvel arrivant n'existe qu'une fois "
+    "register_employee EXÉCUTÉ (après validation humaine) — avant ça, "
+    "get_employee_availability, find_common_slot et send_email le "
+    "rejetteraient comme inconnu. Donc en deux temps, jamais en un seul "
+    "tour : "
     "1) si la personne n'existe pas encore (list_employees ne la trouve "
     "pas), propose UNIQUEMENT register_employee, puis explique clairement "
-    "au RH que le reste (réunion, mails) suivra une fois cette action "
+    "au RH que le reste (réunions, mails) suivra une fois cette action "
     "approuvée — ne les invente pas avant. "
     "2) si le RH répond ensuite (ex. 'continue', 'et la suite ?'), "
     "N'APPELLE JAMAIS register_employee une seconde fois pour la même "
     "personne sans vérifier d'abord : rappelle SYSTÉMATIQUEMENT "
     "list_employees(name_contains=...) en tout premier — si elle apparaît "
     "maintenant, utilise son employee_id réel pour enchaîner avec les "
-    "actions (2), (3) et (4) ; si elle n'apparaît toujours pas, l'action "
+    "actions (2) à (5) ; si elle n'apparaît toujours pas, l'action "
     "register_employee précédente n'a pas encore été approuvée, dis-le au "
-    "RH au lieu d'en reproposer une autre.\n\n"
+    "RH au lieu d'en reproposer une autre. Une fois l'employee_id "
+    "récupéré, appelle propose_action pour LES QUATRE actions (2) à (5) "
+    "avant de répondre au RH — ne t'arrête pas après les deux ou trois "
+    "premières pour décrire les suivantes en texte, termine d'abord tous "
+    "les appels d'outils nécessaires (find_common_slot compris), puis "
+    "résume l'ensemble des cartes créées dans un seul message final.\n\n"
     "EFFETS DE BORD — tu ne peux ni écrire d'événement, ni envoyer "
     "d'email, ni enregistrer ou supprimer un employé, ni supprimer un "
     "événement toi-même : ces fonctions ne te sont pas données. Pour "
