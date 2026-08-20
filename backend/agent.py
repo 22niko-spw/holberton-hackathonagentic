@@ -7,20 +7,32 @@ from dotenv import load_dotenv
 from groq import Groq
 
 from backend.db import get_connection
-from backend.tools import find_common_slot, get_employee_availability, list_employees, propose_action
+from backend.tools import (
+    find_common_slot,
+    get_employee_availability,
+    list_calendar_events,
+    list_employees,
+    propose_action,
+)
 
 load_dotenv()
 
 _client = Groq(api_key=os.environ["GROQ_API_KEY"])
 _model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-MAX_TURNS = 6
+MAX_TURNS = 10  # le plan complet "arrivée" (2 résolutions de nom + 1 créneau + 4 propose_action) en prend déjà 7
 MAX_ACTIONS_PER_PLAN = 8
 
 # Outils qu'on peut "débrancher" en direct (démo / checkpoint palier 3),
 # sans toucher au code ni redémarrer le serveur. État en mémoire (process
 # unique) : suffisant pour une démo, pas conçu pour tenir plusieurs workers.
-TOGGLEABLE_TOOLS = ["list_employees", "get_employee_availability", "find_common_slot", "send_email"]
+TOGGLEABLE_TOOLS = [
+    "list_employees",
+    "get_employee_availability",
+    "find_common_slot",
+    "list_calendar_events",
+    "send_email",
+]
 DISABLED_TOOLS: set[str] = set()
 
 # Tarifs Groq, USD / 1M tokens (console.groq.com/docs/model, relevé le 2026-08-19).
@@ -54,19 +66,51 @@ SYSTEM_PROMPT = (
     "contraintes abstraites : propose UN créneau concret et précis "
     "('le 24/08 à 9h'), puis demande une confirmation simple avant "
     "d'appeler propose_action.\n\n"
+    "ARRIVÉE D'UN NOUVEL EMPLOYÉ — le plan complet comprend à terme 4 "
+    "actions : (1) register_employee, (2) une réunion d'intégration avec "
+    "son manager (trouve un créneau via find_common_slot), (3) un email de "
+    "bienvenue au nouvel arrivant (send_email), (4) une annonce de son "
+    "arrivée à toute l'équipe (send_email, avec depends_on pointant vers "
+    "l'action_id du mail de bienvenue). Mais l'employee_id d'un nouvel "
+    "arrivant n'existe qu'une fois register_employee EXÉCUTÉ (après "
+    "validation humaine) — avant ça, get_employee_availability, "
+    "find_common_slot et send_email le rejetteraient comme inconnu. Donc "
+    "en deux temps, jamais en un seul tour : "
+    "1) si la personne n'existe pas encore (list_employees ne la trouve "
+    "pas), propose UNIQUEMENT register_employee, puis explique clairement "
+    "au RH que le reste (réunion, mails) suivra une fois cette action "
+    "approuvée — ne les invente pas avant. "
+    "2) si le RH répond ensuite (ex. 'continue', 'et la suite ?'), "
+    "N'APPELLE JAMAIS register_employee une seconde fois pour la même "
+    "personne sans vérifier d'abord : rappelle SYSTÉMATIQUEMENT "
+    "list_employees(name_contains=...) en tout premier — si elle apparaît "
+    "maintenant, utilise son employee_id réel pour enchaîner avec les "
+    "actions (2), (3) et (4) ; si elle n'apparaît toujours pas, l'action "
+    "register_employee précédente n'a pas encore été approuvée, dis-le au "
+    "RH au lieu d'en reproposer une autre.\n\n"
     "EFFETS DE BORD — tu ne peux ni écrire d'événement, ni envoyer "
-    "d'email, ni enregistrer d'employé toi-même : ces fonctions ne te "
-    "sont pas données. Pour qu'une de ces actions ait lieu, appelle "
-    "propose_action avec le nom de l'outil visé, ses arguments et la "
-    "raison. Un humain valide ensuite chaque action avant exécution. Le "
-    "champ 'args' doit respecter EXACTEMENT ce schéma selon l'outil visé, "
-    "sans inventer d'autres noms de clés :\n"
+    "d'email, ni enregistrer ou supprimer un employé, ni supprimer un "
+    "événement toi-même : ces fonctions ne te sont pas données. Pour "
+    "qu'une de ces actions ait lieu, appelle propose_action avec le nom "
+    "de l'outil visé, ses arguments et la raison. Un humain valide "
+    "ensuite chaque action avant exécution. Le champ 'args' doit "
+    "respecter EXACTEMENT ce schéma selon l'outil visé, sans inventer "
+    "d'autres noms de clés :\n"
     "- create_calendar_event: {employee_ids: [id, ...], start: "
     "'AAAA-MM-JJTHH:MM:SS', end: 'AAAA-MM-JJTHH:MM:SS', title, "
     "description (optionnel)}\n"
     "- send_email: {employee_ids: [id, ...], subject, body}\n"
     "- register_employee: {name, email, role, department, manager_id "
-    "(ou null), start_date: 'AAAA-MM-JJ'}\n\n"
+    "(ou null), start_date: 'AAAA-MM-JJ'}\n"
+    "- delete_employee: {employee_id}\n"
+    "- delete_calendar_event: {event_id}\n\n"
+    "SUPPRESSIONS — irréversibles une fois approuvées, donc jamais "
+    "d'employee_id ou d'event_id inventé. Avant de proposer "
+    "delete_calendar_event, appelle list_calendar_events (filtre par "
+    "employee_id et/ou title_contains) pour retrouver le bon event_id — "
+    "ne devine jamais un identifiant. Si plusieurs événements "
+    "correspondent, décris-les au RH et demande lequel avant de "
+    "proposer la suppression.\n\n"
     "ERREURS — si un outil renvoie une erreur (champ 'error'), ne l'ignore "
     "pas et n'invente jamais de résultat à sa place : explique au RH ce "
     "qui a échoué et pourquoi, en termes clairs."
@@ -166,6 +210,28 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "list_calendar_events",
+            "description": (
+                "Liste les événements de calendrier existants (id, employé, titre, horaires). "
+                "À utiliser pour retrouver l'event_id exact d'un événement avant de proposer "
+                "delete_calendar_event — ne jamais deviner un event_id. Toujours plafonné à "
+                "20 résultats : filtrer par employee_id et/ou title_contains si besoin."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": "string", "description": "Ne renvoyer que les événements de cet employé."},
+                    "title_contains": {
+                        "type": "string",
+                        "description": "Filtre partiel sur le titre (insensible à la casse).",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "propose_action",
             "description": (
                 "Ajoute une action à effet de bord au plan, à l'état PROPOSEE. "
@@ -176,7 +242,13 @@ TOOLS = [
                 "properties": {
                     "tool": {
                         "type": "string",
-                        "enum": ["create_calendar_event", "send_email", "register_employee"],
+                        "enum": [
+                            "create_calendar_event",
+                            "send_email",
+                            "register_employee",
+                            "delete_employee",
+                            "delete_calendar_event",
+                        ],
                     },
                     "args": {"type": "object", "description": "Arguments à passer à l'outil visé"},
                     "reason": {"type": "string"},
@@ -212,6 +284,12 @@ def run_planner(message: str, history: list[dict] | None = None) -> dict:
             messages=messages,
             tools=TOOLS,
             tool_choice="auto",
+            # 4096 : assez pour laisser un modèle "reasoning" (gpt-oss) finir
+            # son raisonnement interne sans se faire couper avant de produire
+            # un appel d'outil (2048 par défaut ne suffisait pas), mais assez
+            # bas pour rester sous la limite de débit de openai/gpt-oss-120b
+            # sur ce compte (8000 tokens/minute, requête + réponse confondues).
+            max_tokens=4096,
         )
         llm_calls.append(_llm_call_stats(response, time.perf_counter() - llm_started))
         reply = response.choices[0].message
@@ -336,6 +414,8 @@ def _dispatch(name: str, args: dict):
         raise RuntimeError(f"L'outil '{name}' n'est pas disponible actuellement (désactivé).")
     if name == "list_employees":
         return list_employees(args.get("name_contains"))
+    if name == "list_calendar_events":
+        return list_calendar_events(args.get("employee_id"), args.get("title_contains"))
     if name == "get_employee_availability":
         start, end = args["date_range"]
         return get_employee_availability(
