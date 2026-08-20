@@ -1,5 +1,6 @@
 import json
 import re
+import unicodedata
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -141,6 +142,12 @@ def propose_action(
     reason: str,
     depends_on: int | None = None,
 ) -> int:
+    # Généré ici plutôt que laissé au modèle : mécanique et déterministe
+    # (extraire un prénom, l'assainir), pas la peine de compter sur le LLM
+    # pour ça — et ça marche même si le RH ne donne jamais d'email.
+    if tool == "register_employee" and not args.get("email"):
+        args = {**args, "email": _default_email(args.get("name", ""))}
+
     conn = get_connection()
     cursor = conn.execute(
         "INSERT INTO actions (tool, args, reason, depends_on, status) VALUES (?, ?, ?, ?, 'PROPOSEE')",
@@ -150,6 +157,16 @@ def propose_action(
     action_id = cursor.lastrowid
     conn.close()
     return action_id
+
+
+def _default_email(name: str) -> str:
+    """prénom@lebras.com à partir du premier mot de name, accents et
+    caractères spéciaux retirés. 'employe' si name est vide plutôt que de
+    produire une adresse invalide."""
+    first_name = name.strip().split(" ")[0] if name.strip() else ""
+    normalized = unicodedata.normalize("NFKD", first_name).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "", normalized.lower())
+    return f"{slug or 'employe'}@lebras.com"
 
 
 # ---------------------------------------------------------------------------
