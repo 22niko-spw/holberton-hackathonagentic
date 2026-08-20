@@ -125,18 +125,15 @@ body {
 }
 
 .sidebar__logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  object-fit: cover;
-  flex-shrink: 0;
+  margin: 0;
+  color: var(--text);
+  line-height: 0;
 }
 
-.sidebar__brand h1 {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+.sidebar__logo svg {
+  display: block;
+  height: 32px;
+  width: auto;
 }
 
 .sidebar__tagline {
@@ -644,6 +641,7 @@ body {
   align-items: center;
   gap: 0.75rem;
   margin: auto;
+  margin-top: -80px;
   color: var(--text-muted);
   font-size: 0.875rem;
   text-align: center;
@@ -651,10 +649,10 @@ body {
 }
 
 .thread__empty-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  opacity: 0.9;
+  display: block;
+  height: 100px;
+  width: auto;
+  color: var(--text);
 }
 
 .thread__empty-title {

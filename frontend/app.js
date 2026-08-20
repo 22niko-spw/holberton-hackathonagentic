@@ -448,7 +448,9 @@ function renderEmptyState() {
   const empty = document.createElement("div");
   empty.className = "thread__empty";
   empty.innerHTML = `
-    <img src="/static/assets/logo.png" alt="" class="thread__empty-logo" />
+    <svg class="thread__empty-logo" viewBox="0 0 600 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tauturu">
+      <text x="300" y="62" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-weight="600" font-size="34" letter-spacing="8" fill="currentColor">TAU<tspan fill="#2563eb">TURU</tspan><tspan fill="#2563eb" letter-spacing="0">.</tspan></text>
+    </svg>
     <p class="thread__empty-title">Bienvenue</p>
   `;
   thread.appendChild(empty);
