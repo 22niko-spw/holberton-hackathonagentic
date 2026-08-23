@@ -5,7 +5,7 @@ Volontairement limité à ce qu'exige le MVP — pas de fonctions bonus
 (annulation, replanification) dans ce scénario, voir AGENTS.md pour ces cas.
 
 1. J'ouvre Tauturu. Écran d'accueil centré, un seul champ. Je saisis :
-   "Prépare l'arrivée de Panaki, développeur backend, qui commence lundi."
+   "Prépare l'arrivée de Panaki, développeur backend, qui commence le 1er Septembre."
 
 2. L'agent vérifie d'abord que Panaki n'existe pas déjà (`list_employees`),
    puis propose UNE SEULE carte : enregistrer Panaki. Le message explique
@@ -21,10 +21,7 @@ Volontairement limité à ce qu'exige le MVP — pas de fonctions bonus
    l'arrivée et invite à cette réunion. Chaque carte affiche l'outil, un
    résumé structuré (qui, quand, objet/titre) et la raison invoquée.
 
-4. Je refuse la réunion collective. La carte du mail d'équipe en dépend
-   (il cite l'heure de la réunion — inutile d'inviter à un horaire qui
-   n'existera jamais) : elle passe "Bloquée" instantanément, sans recharger
-   la page, et perd ses boutons.
+4. J'approuve la réunion collective. Et refuse la carte du mail d'équipe en dépend : sans recharger, la page perd ses boutons.
 
 5. J'approuve les deux cartes restantes (réunion manager, mail de
    bienvenue à Panaki). Chaque approbation exécute réellement l'action
@@ -32,7 +29,7 @@ Volontairement limité à ce qu'exige le MVP — pas de fonctions bonus
    Calendrier : la réunion d'intégration y apparaît.
 
 6. Onglet Historique : les 5 actions de la session, avec leur statut final
-   (3 exécutées, 1 refusée, 1 bloquée) et l'horodatage de chacune.
+   (4 exécutées, 1 refusée) et l'horodatage de chacune.
 
 **Limites connues à anticiper pendant la démo :**
 - Pas de badge "irréversible" ni d'affichage du `depends_on` sur les
