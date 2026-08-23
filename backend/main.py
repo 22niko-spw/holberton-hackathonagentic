@@ -188,18 +188,20 @@ def _save_turn(conversation_id: int, user_message: str, assistant_message: str, 
         logger.exception("échec de sauvegarde de la conversation %s", conversation_id)
 
 
-def _continue_conversation(conversation_id: int) -> dict | None:
+def _continue_conversation(conversation_id: int) -> dict:
     """Relance le planner juste après l'approbation d'une action qui
     débloque la suite d'un plan (ex: register_employee -> le reste de
     l'arrivée), pour que le RH n'ait pas à retaper "continue" lui-même.
-    None si ça échoue (quota, etc.) : l'approbation elle-même reste
-    réussie, seule la relance automatique est manquée."""
+    ok=False si ça échoue (quota, réseau, etc.) : l'approbation elle-même
+    reste réussie, mais le RH doit être prévenu que la relance automatique
+    a raté plutôt que de ne rien voir apparaître (un plan qui n'avance
+    plus sans explication est aussi trompeur qu'une fausse réponse)."""
     history = get_history_messages(conversation_id, MAX_HISTORY_MESSAGES)
     try:
         result = run_planner("Continue.", history)
     except Exception:
         logger.exception("relance automatique échouée pour la conversation %s", conversation_id)
-        return None
+        return {"ok": False}
 
     _save_turn(
         conversation_id,
@@ -210,6 +212,7 @@ def _continue_conversation(conversation_id: int) -> dict | None:
         usage=result.get("usage", {}),
     )
     return {
+        "ok": True,
         "conversation_id": conversation_id,
         "message": result["message"],
         "plan": result["plan"],

@@ -661,9 +661,17 @@ async function decideAction(action, decision, card, statusEl) {
 
     // register_employee approuvé : le planner enchaîne tout de suite sur
     // la suite du plan (réunions, mails) sans que le RH ait à retaper
-    // "continue" lui-même — voir AUTO_CONTINUE_TOOLS côté backend.
-    if (data.continuation) {
+    // "continue" lui-même — voir AUTO_CONTINUE_TOOLS côté backend. Si la
+    // relance automatique échoue (réseau, quota...), le RH doit le savoir
+    // au lieu de voir le plan s'arrêter sans explication.
+    if (data.continuation && data.continuation.ok) {
       renderAgentTurn(data.continuation);
+    } else if (data.continuation && !data.continuation.ok) {
+      const warning = document.createElement("p");
+      warning.className = "action__confirmation action__confirmation--reject";
+      warning.textContent =
+        "La suite du plan n'a pas pu être proposée automatiquement (problème réseau ou serveur). Tape « continue » pour réessayer.";
+      card.appendChild(warning);
     }
   } catch (err) {
     const error = document.createElement("p");
