@@ -66,7 +66,7 @@ conversation elle-même est persistée côté serveur en SQLite, voir
 (`backend/agent.py`), qui appelle le LLM avec ses outils de
 lecture/proposition (`list_employees`, `list_calendar_events`,
 `get_employee_availability`, `find_common_slot`, `propose_action` — voir
-DOCS/AGENTS.md) jusqu'à ce que le plan soit complet. Chaque action à effet
+[AGENTS.md](AGENTS.md)) jusqu'à ce que le plan soit complet. Chaque action à effet
 de bord proposée est écrite en SQLite à l'état `PROPOSEE`, jamais exécutée
 par le modèle lui-même.
 
