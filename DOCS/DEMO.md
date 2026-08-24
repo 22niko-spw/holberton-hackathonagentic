@@ -21,7 +21,9 @@ Volontairement limité à ce qu'exige le MVP — pas de fonctions bonus
    l'arrivée et invite à cette réunion. Chaque carte affiche l'outil, un
    résumé structuré (qui, quand, objet/titre) et la raison invoquée.
 
-4. J'approuve la réunion collective. Et refuse la carte du mail d'équipe en dépend : sans recharger, la page perd ses boutons.
+4. J'approuve la réunion collective, puis refuse la carte du mail
+   d'équipe qui en dépend : sans recharger la page, elle perd ses
+   boutons.
 
 5. J'approuve les deux cartes restantes (réunion manager, mail de
    bienvenue à Panaki). Chaque approbation exécute réellement l'action

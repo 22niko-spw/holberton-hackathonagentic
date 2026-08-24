@@ -108,6 +108,14 @@ la limite ET reste utile avec les outils qui lui restent.
 
 ---
 
+## Rejouer automatiquement
+
+`make eval` (ou `python3 eval/run_eval.py`) rejoue ces 5 cas en une
+commande contre l'app réellement lancée et affiche un score chiffré —
+carte bonus palier 5. Vérifie les mêmes invariants que ci-dessus (trace,
+plan, effet réel côté base) mais pas les nuances de formulation comme
+celle du cas 4 : un script ne juge pas le style d'une réponse.
+
 ## Ce que ces cas ne couvrent pas
 
 Champ vide, double-clic sur envoyer, et absence de clé API côté front sont

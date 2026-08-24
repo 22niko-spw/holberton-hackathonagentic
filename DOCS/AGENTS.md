@@ -10,11 +10,12 @@ une instruction dans le prompt système pour garantir ça — un prompt peut
 être mal suivi, mal interprété, ou contourné par une entrée utilisateur
 piégée.
 
-À la place, `create_calendar_event`, `send_email` et `register_employee` ne
-sont **jamais donnés au modèle** comme outils appelables. Le modèle peut
-seulement demander à ce qu'une action soit ajoutée à un plan (via
-`propose_action`), et un morceau de code séparé, qui ne repasse par aucun
-LLM, se charge de l'exécution une fois qu'un humain a approuvé.
+À la place, `create_calendar_event`, `send_email`, `register_employee`,
+`delete_employee` et `delete_calendar_event` ne sont **jamais donnés au
+modèle** comme outils appelables. Le modèle peut seulement demander à ce
+qu'une action soit ajoutée à un plan (via `propose_action`), et un morceau
+de code séparé, qui ne repasse par aucun LLM, se charge de l'exécution une
+fois qu'un humain a approuvé.
 
 Deux conséquences concrètes :
 - Même si le modèle "décide" d'appeler `send_email` directement, l'appel
@@ -61,6 +62,33 @@ dépend n'a plus lieu d'être envoyé — il se bloque tout seul.
    sinon, puis journalise le résultat.
 
 ## Outils accessibles au modèle
+
+### `list_employees`
+
+```python
+list_employees(name_contains: str | None = None) -> list[dict]
+```
+
+- **Effet de bord** : non (lecture seule).
+- Annuaire interne : permet au modèle de retrouver l'`employee_id` d'un
+  nom cité par le RH, ou de constater que la personne n'existe pas encore
+  (un nouvel arrivant). Le modèle n'a pas le droit d'inventer un
+  `employee_id` — il doit toujours passer par cet outil avant de citer
+  quelqu'un dans un autre appel.
+
+### `list_calendar_events`
+
+```python
+list_calendar_events(
+    employee_id: str | None = None,
+    title_contains: str | None = None
+) -> list[dict]
+```
+
+- **Effet de bord** : non (lecture seule).
+- Plafonné à 20 résultats. Sert à retrouver un `event_id` réel avant de
+  proposer `delete_calendar_event` — même principe que `list_employees` :
+  jamais d'identifiant deviné.
 
 ### `get_employee_availability`
 
@@ -116,9 +144,15 @@ propose_action(
   `actions` avec l'état `PROPOSEE`. C'est l'unique façon pour le modèle de
   faire figurer une action à effet de bord dans le plan — il ne peut pas
   aller plus loin que ça.
-- `tool` doit correspondre à l'un des trois noms de la section suivante.
+- `tool` doit correspondre à l'un des cinq noms de la section suivante :
+  `create_calendar_event`, `send_email`, `register_employee`,
+  `delete_employee`, `delete_calendar_event`.
 - `depends_on` pointe vers l'`action_id` d'une action du même plan devant
   être exécutée avant celle-ci.
+- Cas `register_employee` : si `email` est absent de `args`, il est généré
+  automatiquement (`prénom@lebras.com`, voir `tools._default_email`) —
+  mécanique et déterministe, pas laissé au modèle. `department`/`manager_id`
+  ont aussi des valeurs par défaut côté prompt (`'Produit'`/`'adam'`).
 
 ## Actions à effet de bord (exécuteur uniquement)
 
@@ -181,11 +215,68 @@ register_employee(
 - **Effet de bord** : oui — écriture réelle en base SQLite, pas de mock ici.
 - Même mécanisme d'idempotence que les deux outils précédents.
 
+### `delete_employee`
+
+```python
+delete_employee(action_id: str, employee_id: str) -> dict  # {employee_id, name}
+```
+
+- **Effet de bord** : oui, et irréversible — supprime l'employé et, en
+  cascade, tous ses événements de calendrier (sinon la contrainte de clé
+  étrangère sur `calendar_events.employee_id` bloquerait la suppression).
+- Même mécanisme d'idempotence que les autres.
+
+### `delete_calendar_event`
+
+```python
+delete_calendar_event(action_id: str, event_id: int) -> dict  # {event_id, title}
+```
+
+- **Effet de bord** : oui, irréversible. Le modèle doit avoir appelé
+  `list_calendar_events` avant de proposer cette action — jamais
+  d'`event_id` deviné.
+
 ## Prompts système
 
-TODO — rédigés au palier 3, une fois le comportement de l'agent stabilisé.
+`SYSTEM_PROMPT` dans `backend/agent.py` (une seule longue constante,
+réinjectée à chaque requête via `_system_prompt()` avec la date du jour).
+Sections, dans l'ordre :
+
+1. Cadrage général : agir de façon autonome, poser le moins de questions
+   possible.
+2. **Résoudre les personnes** — toujours vérifier un nom via
+   `list_employees` avant de l'utiliser ; jamais d'identifiant inventé ;
+   valeurs par défaut pour `department`/`manager_id`/`email` d'un nouvel
+   arrivant, jamais redemandées au RH si absentes.
+3. **Planifier** — trouver soi-même un créneau via `find_common_slot`,
+   proposer une heure concrète, confirmer avant `propose_action`.
+4. **Arrivée d'un nouvel employé** — le plan complet compte 5 actions,
+   mais l'`employee_id` n'existe qu'une fois `register_employee` exécuté
+   (validation humaine comprise) : impossible de le construire en un seul
+   tour. Le prompt impose explicitement l'ordre d'appel de
+   `propose_action` (jamais décrire une action en texte sans l'avoir
+   réellement proposée — piège rencontré et corrigé pendant le
+   développement, voir JOURNAL.md) et le sens des dépendances entre
+   actions.
+5. **Effets de bord** — schéma exact des `args` attendus par outil, pour
+   éviter que le modèle invente des noms de clés.
+6. **Suppressions** — jamais d'`employee_id`/`event_id` deviné, toujours
+   `list_employees`/`list_calendar_events` d'abord.
+7. **Erreurs** — si un outil renvoie une erreur, l'expliquer au RH, ne
+   jamais inventer de résultat à la place.
 
 ## Traces
 
-TODO — au palier 3 : tours de boucle par plan, outils appelés, tokens
-consommés, latence.
+Chaque appel d'outil pendant un tour de boucle est capturé dans une liste
+`trace` (voir `run_planner` dans `backend/agent.py`) :
+`{tool, args, ok, error, duration_ms}`. Une erreur d'outil ne fait jamais
+planter la boucle : elle est renvoyée telle quelle au modèle comme
+résultat de l'appel, avec consigne explicite de ne pas l'ignorer ni
+inventer un résultat à la place (voir `eval/cases.md` et
+`tests/test_agent_loop.py`, qui vérifient ce comportement précis).
+
+Chaque appel LLM (pas seulement chaque outil) est aussi mesuré
+(`llm_calls` : tokens prompt/completion, durée, coût estimé si le tarif du
+modèle est connu) et agrégé dans `usage`. Les deux sont renvoyés par
+`/chat` et affichables côté front (masqué par défaut, activable dans
+Réglages → "Afficher les outils utilisés").
